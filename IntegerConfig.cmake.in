@@ -1,0 +1,26 @@
+@PACKAGE_INIT@
+
+# Integer库的CMake配置文件
+
+include(CMakeFindDependencyMacro)
+
+# 检查编译器要求
+if(CMAKE_CXX_STANDARD LESS 14)
+    message(WARNING "Integer library requires C++14 or later. Current standard: ${CMAKE_CXX_STANDARD}")
+endif()
+
+# 检查AVX2支持（可选警告）
+include(CheckCXXCompilerFlag)
+check_cxx_compiler_flag("-mavx2" COMPILER_SUPPORTS_AVX2)
+if(NOT COMPILER_SUPPORTS_AVX2 AND NOT MSVC)
+    message(STATUS "Integer: Compiler does not support AVX2. Performance may be reduced.")
+endif()
+
+# 包含目标文件
+include("${CMAKE_CURRENT_LIST_DIR}/IntegerTargets.cmake")
+
+# 验证目标
+check_required_components(Integer)
+
+# 设置找到标志
+set(Integer_FOUND TRUE)

@@ -1,0 +1,97 @@
+# Compiled Object files
+*.o
+*.obj
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Compiled Static libraries
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+
+# Build directories
+build/
+Build/
+cmake-build-*/
+.cmake/
+
+# IDE files
+.vscode/
+.vs/
+*.vcxproj*
+*.sln
+*.user
+*.suo
+*.ncb
+*.aps
+*.plg
+*.opt
+*.clw
+*.ilk
+*.pdb
+*.pch
+*.idb
+*.exp
+
+# Code::Blocks
+*.depend
+*.layout
+*.cbp
+
+# Dev-C++
+*.dev
+
+# Qt Creator
+*.pro.user*
+*.qbs.user*
+
+# CLion
+.idea/
+
+# Temporary files
+*~
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# CMake
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+CTestTestfile.cmake
+*.cmake
+
+# Testing
+Testing/
+
+# Documentation
+doc/html/
+doc/latex/
+
+# Package files
+*.tar.gz
+*.zip
+
+# Python cache (if any Python tools are used)
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# OS generated files
+.DS_Store*
+ehthumbs.db
+Thumbs.db
+
+# Puzzle project (to be removed)
+puzzle/
