@@ -197,19 +197,25 @@ namespace detail {
         }
 
         static inline float64x2_t complexMultiply(float64x2_t first, float64x2_t second) {
-            double r1 = vgetq_lane_f64(first, 0), i1 = vgetq_lane_f64(first, 1);
-            double r2 = vgetq_lane_f64(second, 0), i2 = vgetq_lane_f64(second, 1);
-            return (float64x2_t){r1 * r2 - i1 * i2, r1 * i2 + i1 * r2};
+            return vcmlaq_f64(vdupq_n_f64(0.0), first, second);
         }
 
         static inline float64x2_t complexMultiplyConjugate(float64x2_t first, float64x2_t second) {
-            double r1 = vgetq_lane_f64(first, 0), i1 = vgetq_lane_f64(first, 1);
-            double r2 = vgetq_lane_f64(second, 0), i2 = vgetq_lane_f64(second, 1);
-            return (float64x2_t){r1 * r2 + i1 * i2, i1 * r2 - r1 * i2};
+            const float64x2_t conjugate_mask = {1.0, -1.0};
+            float64x2_t second_conjugated = vmulq_f64(second, conjugate_mask);
+            float64x2_t zero = vdupq_n_f64(0.0);
+            return vcmlaq_f64(zero, first, second_conjugated);
         }
 
         static inline float64x2_t complexMultiplySpecial(float64x2_t first, float64x2_t second) {
-            return complexMultiply(first, second);
+            double r1 = vgetq_lane_f64(first, 0);
+            double i1 = vgetq_lane_f64(first, 1);
+            float64x2_t term1 = vmulq_f64(second, vdupq_n_f64(r1));
+            float64x1_t s_high = vget_high_f64(second);
+            float64x1_t s_low = vget_low_f64(second);
+            float64x2_t second_rev = vcombine_f64(s_high, s_low);
+            float64x2_t term2 = vmulq_f64(second_rev, vdupq_n_f64(i1));
+            return vaddq_f64(term1, term2);
         }
 
         static inline float64x2_t complexScalarMultiply(float64x2_t complex, double scalar) {
@@ -311,8 +317,19 @@ namespace detail {
             return first * std::conj(second);
         }
 
-        static inline std::complex<double> complexMultiplySpecial(std::complex<double> first, std::complex<double> second) {
-            return first * second;
+        std::complex<double> complexMultiplySpecial(
+            const std::complex<double>& first,
+            const std::complex<double>& second) {
+            double r1 = first.real();
+            double i1 = first.imag();
+            double r2 = second.real();
+            double i2 = second.imag();
+
+            double result_real = r1 * r2 + i1 * i2;
+
+            double result_imag = r1 * i2 + i1 * r2;
+
+            return std::complex<double>(result_real, result_imag);
         }
 
         static inline std::complex<double> complexScalarMultiply(std::complex<double> complex, double scalar) {
@@ -800,8 +817,7 @@ class UnsignedInteger {
                 other.operator std::string() +
                 " from a smaller one " +
                 this->operator std::string() +
-                "."
-        )
+                ".")
         std::uint32_t *thisDigit = digits, *thisEnd = digits + length;
         for (std::uint32_t *otherDigit = other.digits, *otherEnd = other.digits + other.length; otherDigit != otherEnd; ++thisDigit, ++otherDigit)
             if ((*thisDigit -= *otherDigit) >= Base)

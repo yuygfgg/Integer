@@ -155,7 +155,7 @@ def rand_signed_str(max_digits=300):
     return s
 
 
-def test_random(cli_path: Path, seed=0xC0FFEE, cases=200):
+def test_random(cli_path: Path, seed=0xC0FFEE, cases=2000):
     random.seed(seed)
     lines = []
     refs = []
