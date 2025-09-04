@@ -7,9 +7,14 @@ add_test(NAME integer_run_tests
     COMMAND ${Python3_EXECUTABLE} ${TEST_RUNNER}
 )
 
-# 将 CMake 使用的 C++ 编译器传递给脚本（脚本默认使用 clang++，这里覆盖为 CMAKE_CXX_COMPILER）
+if(APPLE)
+    set(_TEST_CLANG "clang++")
+else()
+    set(_TEST_CLANG "${CMAKE_CXX_COMPILER}")
+endif()
+
 set_tests_properties(integer_run_tests PROPERTIES
-    ENVIRONMENT "CLANG=${CMAKE_CXX_COMPILER}"
+    ENVIRONMENT "CLANG=${_TEST_CLANG}"
     TIMEOUT 900
 )
 

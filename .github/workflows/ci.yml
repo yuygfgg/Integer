@@ -10,24 +10,19 @@ on:
 jobs:
   build-and-test:
     name: ${{ matrix.os }} • ${{ matrix.arch }} • ${{ matrix.cmake_build_type }}
-    runs-on: ${{ matrix.runner }}
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         cmake_build_type: [Release]
+        os: [ubuntu-24.04, macos-13, macos-14]
         include:
-          - os: ubuntu
+          - os: ubuntu-24.04
             arch: x86_64
-            runner: ubuntu-22.04
-          - os: ubuntu
-            arch: arm64
-            runner: ubuntu-22.04-arm
-          - os: macos
+          - os: macos-13
             arch: x86_64
-            runner: macos-13
-          - os: macos
+          - os: macos-14
             arch: arm64
-            runner: macos-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
