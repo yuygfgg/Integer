@@ -6,38 +6,64 @@
  * supporting construction, arithmetic operations, and input/output for both unsigned and signed big integers.
  * It is suitable for scenarios requiring large number computations.
  *
- * @author [masonxiong](https://www.luogu.com.cn/user/446979)
- * @date 2025-8-24
+ * @author [masonxiong](https://www.luogu.com.cn/user/446979), [yuygfgg](https://www.luogu.com.cn/user/251551)
+ * @date 2025-9-04
  */
 
 #ifndef INTEGER_H
-#define INTEGER_H 20250824L
+#define INTEGER_H 20250904L
 
-#include <cmath>
-#include <limits>
-#include <string>
-#include <vector>
-#include <cstring>
-#include <cstdint>
-#include <utility>
-#include <complex>
-#include <iostream>
 #include <algorithm>
+#include <cmath>
+#include <complex>
+#include <cstdint>
+#include <cstring>
+#include <iostream>
+#include <limits>
 #include <stdexcept>
+#include <string>
 #include <type_traits>
-#include <immintrin.h>
+#include <utility>
+#include <vector>
 
 #ifdef ENABLE_VALIDITY_CHECK
-#define VALIDITY_CHECK(condition, errorType, message) if (!(condition)) throw errorType(message);
+#define VALIDITY_CHECK(condition, errorType, message) \
+    if (!(condition)) throw errorType(message);
 #else
 #define VALIDITY_CHECK(condition, errorType, message)
 #endif
 
+#if defined(__AVX2__)
+#include <immintrin.h>
+#elif defined(__ARM_NEON__)
+#include <arm_neon.h>
+#endif
+
+#ifndef __CONSTEXPR
+#ifdef _GLIBCXX14_CONSTEXPR
+#define __CONSTEXPR _GLIBCXX14_CONSTEXPR
+#else
+#define __CONSTEXPR constexpr
+#endif
+
+#endif
+
 namespace detail {
+    constexpr std::uint32_t log2(std::uint32_t n) {
+        VALIDITY_CHECK(n, std::invalid_argument, "log2 error: the provided integer is zero.");
+#if defined(__clang__)
+        return __builtin_clz(1) - __builtin_clz(n);
+#elif defined(__GNUC__)
+        return std::__lg(n);
+#else
+        return n <= 1 ? 0 : 1 + log2(n >> 1);
+#endif
+    }
+
     struct InputHelper {
         std::uint32_t table[0x10000];
 
-        _GLIBCXX14_CONSTEXPR InputHelper() : table() {
+        __CONSTEXPR InputHelper() : table() {
             for (std::uint32_t i = 48; i != 58; ++i)
                 for (std::uint32_t j = 48; j != 58; ++j)
                     table[i << 8 | j] = (j & 15) * 10 + (i & 15);
@@ -51,7 +77,7 @@ namespace detail {
     struct OutputHelper {
         std::uint32_t table[10000];
 
-        _GLIBCXX14_CONSTEXPR OutputHelper() : table() {
+        __CONSTEXPR OutputHelper() : table() {
             for (std::uint32_t *i = table, a = 48; a != 58; ++a)
                 for (std::uint32_t b = 48; b != 58; ++b)
                     for (std::uint32_t c = 48; c != 58; ++c)
@@ -64,10 +90,11 @@ namespace detail {
         }
     };
 
+#if defined(__AVX2__)
     struct TransformHelper {
         __m128d* twiddleFactors;
         std::uint32_t length;
-        
+
         TransformHelper() : twiddleFactors(new __m128d[1]()), length(1) {
             *twiddleFactors = _mm_set_pd(0.0, 1.0);
         }
@@ -94,7 +121,7 @@ namespace detail {
 
         void resize(std::uint32_t transformLength) {
             if (transformLength > length << 1) {
-                std::uint32_t halfLog = std::__lg(transformLength) >> 1, halfSize = 1 << halfLog;
+                std::uint32_t halfLog = detail::log2(transformLength) >> 1, halfSize = 1 << halfLog;
                 __m128d* baseFactors = new __m128d[halfSize << 1]();
                 const double angleStep = std::acos(-1.0) / halfSize, fineAngleStep = angleStep / halfSize;
                 for (std::uint32_t i = 0, j = (halfSize * 3) >> 1, phaseAccumulator = 0; i != halfSize; phaseAccumulator -= halfSize - (j >> __builtin_ctz(++i))) {
@@ -115,7 +142,7 @@ namespace detail {
                     const __m128d evenElement = *currentElement, oddElement = currentElement[blockSize];
                     *currentElement = evenElement + oddElement, currentElement[blockSize] = evenElement - oddElement;
                 }
-                for (__m128d* blockStart = dataArray + stepSize, *twiddlePointer = twiddleFactors + 1; blockStart != dataArray + transformSize; blockStart += stepSize, ++twiddlePointer) {
+                for (__m128d *blockStart = dataArray + stepSize, *twiddlePointer = twiddleFactors + 1; blockStart != dataArray + transformSize; blockStart += stepSize, ++twiddlePointer) {
                     for (__m128d* currentElement = blockStart; currentElement != blockStart + blockSize; ++currentElement) {
                         const __m128d evenElement = *currentElement, oddElement = complexMultiply(currentElement[blockSize], *twiddlePointer);
                         *currentElement = evenElement + oddElement, currentElement[blockSize] = evenElement - oddElement;
@@ -130,7 +157,7 @@ namespace detail {
                     const __m128d evenElement = *currentElement, oddElement = currentElement[blockSize];
                     *currentElement = evenElement + oddElement, currentElement[blockSize] = evenElement - oddElement;
                 }
-                for (__m128d* blockStart = dataArray + stepSize, *twiddlePointer = twiddleFactors + 1; blockStart != dataArray + transformSize; blockStart += stepSize, ++twiddlePointer) {
+                for (__m128d *blockStart = dataArray + stepSize, *twiddlePointer = twiddleFactors + 1; blockStart != dataArray + transformSize; blockStart += stepSize, ++twiddlePointer) {
                     for (__m128d* currentElement = blockStart; currentElement != blockStart + blockSize; ++currentElement) {
                         const __m128d evenElement = *currentElement, oddElement = currentElement[blockSize];
                         *currentElement = evenElement + oddElement, currentElement[blockSize] = complexMultiplyConjugate(evenElement - oddElement, *twiddlePointer);
@@ -147,8 +174,8 @@ namespace detail {
             const __m128d negateMask = _mm_castsi128_pd(_mm_set_epi64x(std::int64_t(1ull << 63), std::int64_t(1ull << 63)));
             for (std::uint32_t blockStart = 2, blockEnd = 3; blockStart != transformSize; blockStart <<= 1, blockEnd <<= 1) {
                 for (std::uint32_t forwardIndex = blockStart, backwardIndex = forwardIndex + blockStart - 1; forwardIndex != blockEnd; ++forwardIndex, --backwardIndex) {
-                    const __m128d firstEven = _mm_add_pd(firstArray[forwardIndex], _mm_xor_pd(firstArray[backwardIndex], conjugateMask)), firstOdd  = _mm_sub_pd(firstArray[forwardIndex], _mm_xor_pd(firstArray[backwardIndex], conjugateMask));
-                    const __m128d secondEven = _mm_add_pd(secondArray[forwardIndex], _mm_xor_pd(secondArray[backwardIndex], conjugateMask)), secondOdd  = _mm_sub_pd(secondArray[forwardIndex], _mm_xor_pd(secondArray[backwardIndex], conjugateMask));
+                    const __m128d firstEven = _mm_add_pd(firstArray[forwardIndex], _mm_xor_pd(firstArray[backwardIndex], conjugateMask)), firstOdd = _mm_sub_pd(firstArray[forwardIndex], _mm_xor_pd(firstArray[backwardIndex], conjugateMask));
+                    const __m128d secondEven = _mm_add_pd(secondArray[forwardIndex], _mm_xor_pd(secondArray[backwardIndex], conjugateMask)), secondOdd = _mm_sub_pd(secondArray[forwardIndex], _mm_xor_pd(secondArray[backwardIndex], conjugateMask));
                     const __m128d productA = _mm_sub_pd(complexMultiply(firstEven, secondEven), complexMultiply(complexMultiply(firstOdd, secondOdd), (forwardIndex & 1 ? _mm_xor_pd(twiddleFactors[forwardIndex >> 1], negateMask) : twiddleFactors[forwardIndex >> 1]))), productB = _mm_add_pd(complexMultiply(secondEven, firstOdd), complexMultiply(firstEven, secondOdd));
                     firstArray[forwardIndex] = complexScalarMultiply(_mm_add_pd(productA, productB), scalingFactor);
                     firstArray[backwardIndex] = _mm_xor_pd(complexScalarMultiply(_mm_sub_pd(productA, productB), scalingFactor), conjugateMask);
@@ -156,11 +183,218 @@ namespace detail {
             }
         }
     };
+#elif defined(__ARM_NEON__)
+    struct TransformHelper {
+        float64x2_t* twiddleFactors;
+        std::uint32_t length;
 
-    static _GLIBCXX14_CONSTEXPR InputHelper I = {};
-    static _GLIBCXX14_CONSTEXPR OutputHelper O = {};
-    static TransformHelper T = {};
-}
+        TransformHelper() : twiddleFactors(new float64x2_t[1]()), length(1) {
+            *twiddleFactors = (float64x2_t){1.0, 0.0};
+        }
+
+        ~TransformHelper() noexcept {
+            delete[] twiddleFactors;
+        }
+
+        static inline float64x2_t complexMultiply(float64x2_t first, float64x2_t second) {
+            double r1 = vgetq_lane_f64(first, 0), i1 = vgetq_lane_f64(first, 1);
+            double r2 = vgetq_lane_f64(second, 0), i2 = vgetq_lane_f64(second, 1);
+            return (float64x2_t){r1 * r2 - i1 * i2, r1 * i2 + i1 * r2};
+        }
+
+        static inline float64x2_t complexMultiplyConjugate(float64x2_t first, float64x2_t second) {
+            double r1 = vgetq_lane_f64(first, 0), i1 = vgetq_lane_f64(first, 1);
+            double r2 = vgetq_lane_f64(second, 0), i2 = vgetq_lane_f64(second, 1);
+            return (float64x2_t){r1 * r2 + i1 * i2, i1 * r2 - r1 * i2};
+        }
+
+        static inline float64x2_t complexMultiplySpecial(float64x2_t first, float64x2_t second) {
+            return complexMultiply(first, second);
+        }
+
+        static inline float64x2_t complexScalarMultiply(float64x2_t complex, double scalar) {
+            return vmulq_f64(complex, vdupq_n_f64(scalar));
+        }
+
+        void resize(std::uint32_t transformLength) {
+            if (transformLength > length << 1) {
+                std::uint32_t halfLog = detail::log2(transformLength) >> 1, halfSize = 1 << halfLog;
+                float64x2_t* baseFactors = new float64x2_t[halfSize << 1]();
+                const double angleStep = std::acos(-1.0) / halfSize, fineAngleStep = angleStep / halfSize;
+                for (std::uint32_t i = 0, j = (halfSize * 3) >> 1, phaseAccumulator = 0; i != halfSize; phaseAccumulator -= halfSize - (j >> __builtin_ctz(++i))) {
+                    std::complex<double> first = std::polar(1.0, phaseAccumulator * angleStep), second = std::polar(1.0, phaseAccumulator * fineAngleStep);
+                    baseFactors[i] = (float64x2_t){first.real(), first.imag()};
+                    baseFactors[i | halfSize] = (float64x2_t){second.real(), second.imag()};
+                }
+                float64x2_t* newFactors = new float64x2_t[transformLength >> 1];
+                std::memcpy(newFactors, twiddleFactors, length * sizeof(float64x2_t));
+                delete[] twiddleFactors;
+                twiddleFactors = newFactors;
+                for (std::uint32_t i = length; i != transformLength >> 1; ++i)
+                    twiddleFactors[i] = complexMultiply(baseFactors[i & (halfSize - 1)], baseFactors[halfSize | (i >> halfLog)]);
+                delete[] baseFactors;
+                length = transformLength >> 1;
+            }
+        }
+
+        void decimationInFrequency(float64x2_t* dataArray, std::uint32_t transformSize) {
+            for (std::uint32_t blockSize = transformSize >> 1, stepSize = transformSize; blockSize; stepSize = blockSize, blockSize >>= 1) {
+                for (float64x2_t* currentElement = dataArray; currentElement != dataArray + blockSize; ++currentElement) {
+                    const float64x2_t evenElement = *currentElement, oddElement = currentElement[blockSize];
+                    *currentElement = vaddq_f64(evenElement, oddElement);
+                    currentElement[blockSize] = vsubq_f64(evenElement, oddElement);
+                }
+                for (float64x2_t *blockStart = dataArray + stepSize, *twiddlePointer = twiddleFactors + 1; blockStart != dataArray + transformSize; blockStart += stepSize, ++twiddlePointer) {
+                    for (float64x2_t* currentElement = blockStart; currentElement != blockStart + blockSize; ++currentElement) {
+                        const float64x2_t evenElement = *currentElement, oddElement = complexMultiply(currentElement[blockSize], *twiddlePointer);
+                        *currentElement = vaddq_f64(evenElement, oddElement);
+                        currentElement[blockSize] = vsubq_f64(evenElement, oddElement);
+                    }
+                }
+            }
+        }
+
+        void decimationInTime(float64x2_t* dataArray, std::uint32_t transformSize) {
+            for (std::uint32_t blockSize = 1, stepSize = 2; blockSize != transformSize; blockSize = stepSize, stepSize <<= 1) {
+                for (float64x2_t* currentElement = dataArray; currentElement != dataArray + blockSize; ++currentElement) {
+                    const float64x2_t evenElement = *currentElement, oddElement = currentElement[blockSize];
+                    *currentElement = vaddq_f64(evenElement, oddElement);
+                    currentElement[blockSize] = vsubq_f64(evenElement, oddElement);
+                }
+                for (float64x2_t *blockStart = dataArray + stepSize, *twiddlePointer = twiddleFactors + 1; blockStart != dataArray + transformSize; blockStart += stepSize, ++twiddlePointer) {
+                    for (float64x2_t* currentElement = blockStart; currentElement != blockStart + blockSize; ++currentElement) {
+                        const float64x2_t evenElement = *currentElement, oddElement = currentElement[blockSize];
+                        *currentElement = vaddq_f64(evenElement, oddElement);
+                        currentElement[blockSize] = complexMultiplyConjugate(vsubq_f64(evenElement, oddElement), *twiddlePointer);
+                    }
+                }
+            }
+        }
+
+        void frequencyDomainPointwiseMultiply(float64x2_t* firstArray, float64x2_t* secondArray, std::uint32_t transformSize) {
+            const double normalizationFactor = 1.0 / transformSize, scalingFactor = normalizationFactor * 0.25;
+            firstArray[0] = complexScalarMultiply(complexMultiplySpecial(firstArray[0], secondArray[0]), normalizationFactor);
+            firstArray[1] = complexScalarMultiply(complexMultiply(firstArray[1], secondArray[1]), normalizationFactor);
+            const float64x2_t conjugateMask = (float64x2_t){1.0, -1.0};
+            const float64x2_t negateMask = (float64x2_t){-1.0, -1.0};
+            for (std::uint32_t blockStart = 2, blockEnd = 3; blockStart != transformSize; blockStart <<= 1, blockEnd <<= 1) {
+                for (std::uint32_t forwardIndex = blockStart, backwardIndex = forwardIndex + blockStart - 1; forwardIndex != blockEnd; ++forwardIndex, --backwardIndex) {
+                    auto conj = [&](float64x2_t v) { return vmulq_f64(v, conjugateMask); };
+                    const float64x2_t firstEven = vaddq_f64(firstArray[forwardIndex], conj(firstArray[backwardIndex])), firstOdd = vsubq_f64(firstArray[forwardIndex], conj(firstArray[backwardIndex]));
+                    const float64x2_t secondEven = vaddq_f64(secondArray[forwardIndex], conj(secondArray[backwardIndex])), secondOdd = vsubq_f64(secondArray[forwardIndex], conj(secondArray[backwardIndex]));
+                    const float64x2_t twiddle = (forwardIndex & 1 ? vmulq_f64(twiddleFactors[forwardIndex >> 1], negateMask) : twiddleFactors[forwardIndex >> 1]);
+                    const float64x2_t productA = vsubq_f64(complexMultiply(firstEven, secondEven), complexMultiply(complexMultiply(firstOdd, secondOdd), twiddle)), productB = vaddq_f64(complexMultiply(secondEven, firstOdd), complexMultiply(firstEven, secondOdd));
+                    firstArray[forwardIndex] = complexScalarMultiply(vaddq_f64(productA, productB), scalingFactor);
+                    firstArray[backwardIndex] = conj(complexScalarMultiply(vsubq_f64(productA, productB), scalingFactor));
+                }
+            }
+        }
+    };
+#else
+    struct TransformHelper {
+        std::complex<double>* twiddleFactors;
+        std::uint32_t length;
+
+        TransformHelper() : twiddleFactors(new std::complex<double>[1]()), length(1) {
+            *twiddleFactors = {1.0, 0.0};
+        }
+
+        ~TransformHelper() noexcept {
+            delete[] twiddleFactors;
+        }
+
+        static inline std::complex<double> complexMultiply(std::complex<double> first, std::complex<double> second) {
+            return first * second;
+        }
+
+        static inline std::complex<double> complexMultiplyConjugate(std::complex<double> first, std::complex<double> second) {
+            return first * std::conj(second);
+        }
+
+        static inline std::complex<double> complexMultiplySpecial(std::complex<double> first, std::complex<double> second) {
+            return first * second;
+        }
+
+        static inline std::complex<double> complexScalarMultiply(std::complex<double> complex, double scalar) {
+            return complex * scalar;
+        }
+
+        void resize(std::uint32_t transformLength) {
+            if (transformLength > length << 1) {
+                std::uint32_t halfLog = detail::log2(transformLength) >> 1, halfSize = 1 << halfLog;
+                std::complex<double>* baseFactors = new std::complex<double>[halfSize << 1]();
+                const double angleStep = std::acos(-1.0) / halfSize, fineAngleStep = angleStep / halfSize;
+                for (std::uint32_t i = 0, j = (halfSize * 3) >> 1, phaseAccumulator = 0; i != halfSize; phaseAccumulator -= halfSize - (j >> __builtin_ctz(++i))) {
+                    baseFactors[i] = std::polar(1.0, phaseAccumulator * angleStep);
+                    baseFactors[i | halfSize] = std::polar(1.0, phaseAccumulator * fineAngleStep);
+                }
+                std::complex<double>* newFactors = new std::complex<double>[transformLength >> 1];
+                std::memcpy(newFactors, twiddleFactors, length * sizeof(std::complex<double>));
+                delete[] twiddleFactors;
+                twiddleFactors = newFactors;
+                for (std::uint32_t i = length; i != transformLength >> 1; ++i)
+                    twiddleFactors[i] = baseFactors[i & (halfSize - 1)] * baseFactors[halfSize | (i >> halfLog)];
+                delete[] baseFactors;
+                length = transformLength >> 1;
+            }
+        }
+
+        void decimationInFrequency(std::complex<double>* dataArray, std::uint32_t transformSize) {
+            for (std::uint32_t blockSize = transformSize >> 1, stepSize = transformSize; blockSize; stepSize = blockSize, blockSize >>= 1) {
+                for (std::complex<double>* currentElement = dataArray; currentElement != dataArray + blockSize; ++currentElement) {
+                    const std::complex<double> evenElement = *currentElement, oddElement = currentElement[blockSize];
+                    *currentElement = evenElement + oddElement;
+                    currentElement[blockSize] = evenElement - oddElement;
+                }
+                for (std::complex<double>*blockStart = dataArray + stepSize, *twiddlePointer = twiddleFactors + 1; blockStart != dataArray + transformSize; blockStart += stepSize, ++twiddlePointer) {
+                    for (std::complex<double>* currentElement = blockStart; currentElement != blockStart + blockSize; ++currentElement) {
+                        const std::complex<double> evenElement = *currentElement, oddElement = currentElement[blockSize] * *twiddlePointer;
+                        *currentElement = evenElement + oddElement;
+                        currentElement[blockSize] = evenElement - oddElement;
+                    }
+                }
+            }
+        }
+
+        void decimationInTime(std::complex<double>* dataArray, std::uint32_t transformSize) {
+            for (std::uint32_t blockSize = 1, stepSize = 2; blockSize != transformSize; blockSize = stepSize, stepSize <<= 1) {
+                for (std::complex<double>* currentElement = dataArray; currentElement != dataArray + blockSize; ++currentElement) {
+                    const std::complex<double> evenElement = *currentElement, oddElement = currentElement[blockSize];
+                    *currentElement = evenElement + oddElement;
+                    currentElement[blockSize] = evenElement - oddElement;
+                }
+                for (std::complex<double>*blockStart = dataArray + stepSize, *twiddlePointer = twiddleFactors + 1; blockStart != dataArray + transformSize; blockStart += stepSize, ++twiddlePointer) {
+                    for (std::complex<double>* currentElement = blockStart; currentElement != blockStart + blockSize; ++currentElement) {
+                        const std::complex<double> evenElement = *currentElement, oddElement = currentElement[blockSize];
+                        *currentElement = evenElement + oddElement;
+                        currentElement[blockSize] = (evenElement - oddElement) * std::conj(*twiddlePointer);
+                    }
+                }
+            }
+        }
+
+        void frequencyDomainPointwiseMultiply(std::complex<double>* firstArray, std::complex<double>* secondArray, std::uint32_t transformSize) {
+            const double normalizationFactor = 1.0 / transformSize, scalingFactor = normalizationFactor * 0.25;
+            firstArray[0] *= secondArray[0] * normalizationFactor;
+            firstArray[1] *= secondArray[1] * normalizationFactor;
+            for (std::uint32_t blockStart = 2, blockEnd = 3; blockStart != transformSize; blockStart <<= 1, blockEnd <<= 1) {
+                for (std::uint32_t forwardIndex = blockStart, backwardIndex = forwardIndex + blockStart - 1; forwardIndex != blockEnd; ++forwardIndex, --backwardIndex) {
+                    const std::complex<double> firstEven = firstArray[forwardIndex] + std::conj(firstArray[backwardIndex]), firstOdd = firstArray[forwardIndex] - std::conj(firstArray[backwardIndex]);
+                    const std::complex<double> secondEven = secondArray[forwardIndex] + std::conj(secondArray[backwardIndex]), secondOdd = secondArray[forwardIndex] - std::conj(secondArray[backwardIndex]);
+                    const std::complex<double> twiddle = (forwardIndex & 1 ? -twiddleFactors[forwardIndex >> 1] : twiddleFactors[forwardIndex >> 1]);
+                    const std::complex<double> productA = firstEven * secondEven - firstOdd * secondOdd * twiddle, productB = secondEven * firstOdd + firstEven * secondOdd;
+                    firstArray[forwardIndex] = (productA + productB) * scalingFactor;
+                    firstArray[backwardIndex] = std::conj((productA - productB) * scalingFactor);
+                }
+            }
+        }
+    };
+#endif
+
+    static __CONSTEXPR InputHelper I = {};
+    static __CONSTEXPR OutputHelper O = {};
+    static thread_local TransformHelper T = {};
+} // namespace detail
 
 class UnsignedInteger;
 class SignedInteger;
@@ -170,9 +404,9 @@ class UnsignedInteger {
     static constexpr std::uint32_t TransformLimit = 4194304;
     static constexpr std::uint32_t BruteforceThreshold = 64;
 
-    std::uint32_t* digits, length, capacity;
+    std::uint32_t *digits, length, capacity;
 
-protected:
+  protected:
     UnsignedInteger(std::uint32_t initialLength, std::uint32_t initialCapacity) : digits(new std::uint32_t[initialCapacity]), length(initialLength), capacity(initialCapacity) {}
 
     void resize(std::uint32_t newLength) {
@@ -186,14 +420,30 @@ protected:
     void construct(const char* value, std::uint32_t stringLength) {
         std::uint32_t* currentDigit = digits + length - 1;
         switch (stringLength & 7) {
-            case 0: ++currentDigit; break;
-            case 1: *currentDigit = *value & 15; break;
-            case 2: *currentDigit = detail::I(value); break;
-            case 3: *currentDigit = (*value & 15) * 100 + detail::I(value + 1); break;
-            case 4: *currentDigit = detail::I(value) * 100 + detail::I(value + 2); break;
-            case 5: *currentDigit = (*value & 15) * 10000 + detail::I(value + 1) * 100 + detail::I(value + 3); break;
-            case 6: *currentDigit = detail::I(value) * 10000 + detail::I(value + 2) * 100 + detail::I(value + 4); break;
-            case 7: *currentDigit = (*value & 15) * 1000000 + detail::I(value + 1) * 10000 + detail::I(value + 3) * 100 + detail::I(value + 5); break;
+            case 0:
+                ++currentDigit;
+                break;
+            case 1:
+                *currentDigit = *value & 15;
+                break;
+            case 2:
+                *currentDigit = detail::I(value);
+                break;
+            case 3:
+                *currentDigit = (*value & 15) * 100 + detail::I(value + 1);
+                break;
+            case 4:
+                *currentDigit = detail::I(value) * 100 + detail::I(value + 2);
+                break;
+            case 5:
+                *currentDigit = (*value & 15) * 10000 + detail::I(value + 1) * 100 + detail::I(value + 3);
+                break;
+            case 6:
+                *currentDigit = detail::I(value) * 10000 + detail::I(value + 2) * 100 + detail::I(value + 4);
+                break;
+            case 7:
+                *currentDigit = (*value & 15) * 1000000 + detail::I(value + 1) * 10000 + detail::I(value + 3) * 100 + detail::I(value + 5);
+                break;
         }
         for (const char* position = value + (stringLength & 7); currentDigit != digits; *--currentDigit = detail::I(position) * 1000000 + detail::I(position + 2) * 10000 + detail::I(position + 4) * 100 + detail::I(position + 6), position += 8);
         for (; length > 1 && !digits[length - 1]; --length);
@@ -203,12 +453,12 @@ protected:
         constexpr std::uint32_t BlockSize = 64;
         const std::uint32_t remaining = length % BlockSize, *firstBlockPointer = digits + length - remaining, *secondBlockPointer = other.digits + length - remaining;
         if (std::memcmp(firstBlockPointer, secondBlockPointer, remaining << 2))
-            for (const std::uint32_t *firstElementPointer = firstBlockPointer + remaining, *secondElementPointer = secondBlockPointer + remaining; firstElementPointer != firstBlockPointer; )
+            for (const std::uint32_t *firstElementPointer = firstBlockPointer + remaining, *secondElementPointer = secondBlockPointer + remaining; firstElementPointer != firstBlockPointer;)
                 if (*--firstElementPointer != *--secondElementPointer)
                     return std::int32_t(*firstElementPointer - *secondElementPointer);
         while (firstBlockPointer != digits)
             if (std::memcmp(firstBlockPointer -= BlockSize, secondBlockPointer -= BlockSize, BlockSize << 2))
-                for (const std::uint32_t *firstElementPointer = firstBlockPointer + BlockSize, *secondElementPointer = secondBlockPointer + BlockSize; firstElementPointer != firstBlockPointer; )
+                for (const std::uint32_t *firstElementPointer = firstBlockPointer + BlockSize, *secondElementPointer = secondBlockPointer + BlockSize; firstElementPointer != firstBlockPointer;)
                     if (*--firstElementPointer != *--secondElementPointer)
                         return std::int32_t(*firstElementPointer - *secondElementPointer);
         return 0;
@@ -238,7 +488,7 @@ protected:
             };
             for (quotient.digits[currentPosition] = 0; (partialQuotient = std::uint32_t(getEstimatedValue(remainder.digits, currentPosition + divisor.length - 1, length) / (getEstimatedValue(divisor.digits, divisor.length - 1, divisor.length) + 1))); performSubtraction());
             partialQuotient = 1;
-            for (std::uint32_t digitIndex = divisor.length; digitIndex--; )
+            for (std::uint32_t digitIndex = divisor.length; digitIndex--;)
                 if (remainder.digits[digitIndex + currentPosition] != divisor.digits[digitIndex] && (partialQuotient = divisor.digits[digitIndex] < remainder.digits[digitIndex + currentPosition], true))
                     break;
             if (partialQuotient)
@@ -277,9 +527,9 @@ protected:
         const std::uint32_t newPrecision = halfPrecision + truncated.length;
         UnsignedInteger approximateInverse = truncated.computeInverse(newPrecision);
         UnsignedInteger result = (approximateInverse + approximateInverse).leftShift(precisionBits - newPrecision - shiftBack) - (*this * approximateInverse * approximateInverse).rightShift(2 * (newPrecision + shiftBack) - precisionBits);
-        return --result;
+        return result;
     }
-    
+
     std::pair<UnsignedInteger, UnsignedInteger> divisionAndModulus(const UnsignedInteger& other) const {
         if (*this < other)
             return std::make_pair(UnsignedInteger(), *this);
@@ -290,12 +540,15 @@ protected:
         if (shiftBack)
             ++adjustedDivisor;
         const std::uint32_t inversePrecision = precisionBits + adjustedDivisor.length;
-        UnsignedInteger quotient = (*this * adjustedDivisor.computeInverse(inversePrecision)).rightShift(inversePrecision + shiftBack), remainder = *this - quotient * other;
+        UnsignedInteger quotient = (*this * adjustedDivisor.computeInverse(inversePrecision)).rightShift(inversePrecision + shiftBack);
+        while (quotient * other > *this)
+            --quotient;
+        UnsignedInteger remainder = *this - quotient * other;
         for (; remainder >= other; ++quotient, remainder -= other);
         return std::make_pair(std::move(quotient), std::move(remainder));
     }
 
-public:
+  public:
     UnsignedInteger() : digits(new std::uint32_t[1]()), length(1), capacity(1) {}
 
     UnsignedInteger(const UnsignedInteger& other) : digits(reinterpret_cast<std::uint32_t*>(std::memcpy(new std::uint32_t[other.length], other.digits, other.length << 2))), length(other.length), capacity(other.length) {}
@@ -331,13 +584,17 @@ public:
         const std::uint32_t stringLength = std::uint32_t(std::strlen(value));
         digits = new std::uint32_t[length = capacity = (stringLength + 7) >> 3];
         VALIDITY_CHECK(stringLength, std::invalid_argument, "UnsignedInteger constructor error: the provided C-style string is empty. UnsignedInteger can only be constructed from non-empty strings containing only digits.")
-        VALIDITY_CHECK(std::all_of(value, value + stringLength, [](char digit) -> bool { return std::isdigit(digit); }), std::invalid_argument, "UnsignedInteger constructor error: the provided C-style string value = \"" + std::string(value) + "\" contains non-digit characters. UnsignedInteger can only be constructed from non-empty strings containing only digits.")
+        VALIDITY_CHECK(std::all_of(value, value + stringLength, [](char digit) -> bool { return std::isdigit(digit); }), std::invalid_argument, "UnsignedInteger constructor error: the provided C-style string value = "
+                                                                                                                                                " + std::string(value) + "
+                                                                                                                                                " contains non-digit characters. UnsignedInteger can only be constructed from non-empty strings containing only digits.")
         construct(value, stringLength);
     }
 
     UnsignedInteger(const std::string& value) : UnsignedInteger(std::uint32_t(value.size() + 7) >> 3, std::uint32_t(value.size() + 7) >> 3) {
         VALIDITY_CHECK(value.size(), std::invalid_argument, "UnsignedInteger constructor error: the provided string is empty. UnsignedInteger can only be constructed from non-empty strings containing only digits.")
-        VALIDITY_CHECK(std::all_of(value.begin(), value.end(), [](char digit) -> bool { return std::isdigit(digit); }), std::invalid_argument, "UnsignedInteger constructor error: the provided string value = \"" + value + "\" contains non-digit characters. UnsignedInteger can only be constructed from non-empty strings containing only digits.")
+        VALIDITY_CHECK(std::all_of(value.begin(), value.end(), [](char digit) -> bool { return std::isdigit(digit); }), std::invalid_argument, "UnsignedInteger constructor error: the provided string value = "
+                                                                                                                                               " + value + "
+                                                                                                                                               " contains non-digit characters. UnsignedInteger can only be constructed from non-empty strings containing only digits.")
         construct(value.data(), std::uint32_t(value.size()));
     }
 
@@ -396,7 +653,9 @@ public:
         VALIDITY_CHECK(value, std::invalid_argument, "UnsignedInteger operator= error: the provided C-style string is a null pointer.")
         const std::uint32_t stringLength = std::uint32_t(std::strlen(value));
         VALIDITY_CHECK(stringLength, std::invalid_argument, "UnsignedInteger operator= error: the provided C-style string is empty. UnsignedInteger can only be constructed from non-empty strings containing only digits.")
-        VALIDITY_CHECK(std::all_of(value, value + stringLength, [](char digit) -> bool { return std::isdigit(digit); }), std::invalid_argument, "UnsignedInteger operator= error: the provided C-style string value = \"" + std::string(value) + "\" contains non-digit characters. UnsignedInteger can only be constructed from non-empty strings containing only digits.")
+        VALIDITY_CHECK(std::all_of(value, value + stringLength, [](char digit) -> bool { return std::isdigit(digit); }), std::invalid_argument, "UnsignedInteger operator= error: the provided C-style string value = "
+                                                                                                                                                " + std::string(value) + "
+                                                                                                                                                " contains non-digit characters. UnsignedInteger can only be constructed from non-empty strings containing only digits.")
         if (capacity < (length = (stringLength + 7) >> 3))
             delete[] digits, digits = new std::uint32_t[capacity = length];
         return construct(value, stringLength), *this;
@@ -404,7 +663,9 @@ public:
 
     UnsignedInteger& operator=(const std::string& value) {
         VALIDITY_CHECK(value.size(), std::invalid_argument, "UnsignedInteger operator= error: the provided string is empty. UnsignedInteger can only be constructed from non-empty strings containing only digits.")
-        VALIDITY_CHECK(std::all_of(value.begin(), value.end(), [](char digit) -> bool { return std::isdigit(digit); }), std::invalid_argument, "UnsignedInteger operator= error: the provided string value = \"" + value + "\" contains non-digit characters. UnsignedInteger can only be constructed from non-empty strings containing only digits.")
+        VALIDITY_CHECK(std::all_of(value.begin(), value.end(), [](char digit) -> bool { return std::isdigit(digit); }), std::invalid_argument, "UnsignedInteger operator= error: the provided string value = "
+                                                                                                                                               " + value + "
+                                                                                                                                               " contains non-digit characters. UnsignedInteger can only be constructed from non-empty strings containing only digits.")
         if (capacity < (length = std::uint32_t(value.size() + 7) >> 3))
             delete[] digits, digits = new std::uint32_t[capacity = length];
         return construct(value.data(), std::uint32_t(value.size())), *this;
@@ -451,8 +712,8 @@ public:
         if (resultLength < (length << 3 | 7))
             delete[] result, result = new char[resultLength = length << 3 | 7];
         char* resultPointer = result + 8;
-        std::uint32_t* i = digits + length, numberLength = 0;
-        for (std::uint32_t number = *--i; *--resultPointer = char(48 | number % 10), ++numberLength, number /= 10; );
+        std::uint32_t *i = digits + length, numberLength = 0;
+        for (std::uint32_t number = *--i; *--resultPointer = char(48 | number % 10), ++numberLength, number /= 10;);
         for (std::memmove(result, resultPointer, numberLength), resultPointer = result + numberLength; i-- != digits; std::memcpy(resultPointer, detail::O(*i / 10000), 4), resultPointer += 4, std::memcpy(resultPointer, detail::O(*i % 10000), 4), resultPointer += 4);
         return *resultPointer = 0, result;
     }
@@ -532,7 +793,15 @@ public:
     }
 
     UnsignedInteger& operator-=(const UnsignedInteger& other) {
-        VALIDITY_CHECK(*this >= other, std::invalid_argument, "UnsignedInteger subtraction error: Attempted to subtract a larger UnsignedInteger \"" + other.operator std::string() + "\" from a smaller one \"" + operator std::string() + "\".")
+        VALIDITY_CHECK(
+            *this >= other,
+            std::invalid_argument,
+            std::string("UnsignedInteger subtraction error: attempted to subtract a larger UnsignedInteger ") +
+                other.operator std::string() +
+                " from a smaller one " +
+                this->operator std::string() +
+                "."
+        )
         std::uint32_t *thisDigit = digits, *thisEnd = digits + length;
         for (std::uint32_t *otherDigit = other.digits, *otherEnd = other.digits + other.length; otherDigit != otherEnd; ++thisDigit, ++otherDigit)
             if ((*thisDigit -= *otherDigit) >= Base)
@@ -547,7 +816,7 @@ public:
     }
 
     UnsignedInteger& operator--() {
-        VALIDITY_CHECK(bool(*this), std::invalid_argument, "UnsignedInteger subtraction error: Attempted to subtract a larger UnsignedInteger \"1\" from a smaller one \"0\".")
+        VALIDITY_CHECK(bool(*this), std::invalid_argument, "UnsignedInteger decrement error: value is already zero.")
         std::uint32_t *thisDigit = digits, *thisEnd = digits + length - 1;
         for (--*thisDigit; thisDigit != thisEnd && *thisDigit >= Base; *thisDigit += Base, --*++thisDigit);
         return *this;
@@ -572,22 +841,46 @@ public:
         }
         VALIDITY_CHECK(length <= TransformLimit, std::invalid_argument, "UnsignedInteger multiplication error: left operand length (" + std::to_string(length) + ") exceeds Transform limit (" + std::to_string(TransformLimit) + ").")
         VALIDITY_CHECK(other.length <= TransformLimit, std::invalid_argument, "UnsignedInteger multiplication error: right operand length (" + std::to_string(other.length) + ") exceeds Transform limit (" + std::to_string(TransformLimit) + ").")
+#if defined(__AVX2__) || defined(__ARM_NEON__)
         thread_local double *firstArray = nullptr, *secondArray = nullptr;
         thread_local std::uint32_t allocatedSize = 0;
-        const std::uint32_t resultLength = length + other.length, transformLength = 2u << std::__lg(resultLength - 1);
+        const std::uint32_t resultLength = length + other.length, transformLength = 2u << detail::log2(resultLength - 1);
         if (allocatedSize < transformLength << 1)
             delete[] firstArray, delete[] secondArray, firstArray = new double[transformLength << 1](), secondArray = new double[transformLength << 1](), allocatedSize = transformLength << 1;
         std::memset(firstArray, 0, transformLength << 4), std::memset(secondArray, 0, transformLength << 4);
         for (std::uint32_t i = 0; i != length; firstArray[i << 1] = digits[i] % 10000u, firstArray[i << 1 | 1] = digits[i] / 10000u, ++i);
         for (std::uint32_t i = 0; i != other.length; secondArray[i << 1] = other.digits[i] % 10000u, secondArray[i << 1 | 1] = other.digits[i] / 10000u, ++i);
+#if defined(__AVX2__)
         detail::T.resize(transformLength), detail::T.decimationInFrequency(reinterpret_cast<__m128d*>(firstArray), transformLength), detail::T.decimationInFrequency(reinterpret_cast<__m128d*>(secondArray), transformLength);
         detail::T.frequencyDomainPointwiseMultiply(reinterpret_cast<__m128d*>(firstArray), reinterpret_cast<__m128d*>(secondArray), transformLength), detail::T.decimationInTime(reinterpret_cast<__m128d*>(firstArray), transformLength);
+#else // __ARM_NEON__
+        detail::T.resize(transformLength), detail::T.decimationInFrequency(reinterpret_cast<float64x2_t*>(firstArray), transformLength), detail::T.decimationInFrequency(reinterpret_cast<float64x2_t*>(secondArray), transformLength);
+        detail::T.frequencyDomainPointwiseMultiply(reinterpret_cast<float64x2_t*>(firstArray), reinterpret_cast<float64x2_t*>(secondArray), transformLength), detail::T.decimationInTime(reinterpret_cast<float64x2_t*>(firstArray), transformLength);
+#endif
         UnsignedInteger result(resultLength, resultLength);
         std::uint64_t carry = 0;
         for (std::uint32_t i = 0; i != resultLength; ++i) {
             carry += std::uint64_t(std::int64_t(firstArray[i << 1] + 0.5) + std::int64_t(firstArray[i << 1 | 1] + 0.5) * 10000);
             result.digits[i] = std::uint32_t(carry % Base), carry /= Base;
         }
+#else
+        thread_local std::complex<double>*firstArray = nullptr, *secondArray = nullptr;
+        thread_local std::uint32_t allocatedSize = 0;
+        const std::uint32_t resultLength = length + other.length, transformLength = 2u << detail::log2(resultLength - 1);
+        if (allocatedSize < transformLength)
+            delete[] firstArray, delete[] secondArray, firstArray = new std::complex<double>[transformLength](), secondArray = new std::complex<double>[transformLength](), allocatedSize = transformLength;
+        std::memset(firstArray, 0, transformLength * sizeof(std::complex<double>)), std::memset(secondArray, 0, transformLength * sizeof(std::complex<double>));
+        for (std::uint32_t i = 0; i != length; ++i) firstArray[i] = {double(digits[i] % 10000u), double(digits[i] / 10000u)};
+        for (std::uint32_t i = 0; i != other.length; ++i) secondArray[i] = {double(other.digits[i] % 10000u), double(other.digits[i] / 10000u)};
+        detail::T.resize(transformLength), detail::T.decimationInFrequency(firstArray, transformLength), detail::T.decimationInFrequency(secondArray, transformLength);
+        detail::T.frequencyDomainPointwiseMultiply(firstArray, secondArray, transformLength), detail::T.decimationInTime(firstArray, transformLength);
+        UnsignedInteger result(resultLength, resultLength);
+        std::uint64_t carry = 0;
+        for (std::uint32_t i = 0; i != resultLength; ++i) {
+            carry += std::uint64_t(std::int64_t(firstArray[i].real() + 0.5) + std::int64_t(firstArray[i].imag() + 0.5) * 10000);
+            result.digits[i] = std::uint32_t(carry % Base), carry /= Base;
+        }
+#endif
         for (; carry && result.length != result.capacity; result.digits[result.length++] = std::uint32_t(carry % Base), carry /= Base)
             if (result.length == result.capacity)
                 result.resize(result.capacity << 1);
@@ -626,10 +919,10 @@ class SignedInteger {
     UnsignedInteger absolute;
     bool sign;
 
-protected:
+  protected:
     SignedInteger(const UnsignedInteger& initialAbsolute, bool initialSign) : absolute(initialAbsolute), sign(initialSign) {}
 
-public:
+  public:
     SignedInteger() : absolute(), sign() {}
 
     SignedInteger(const SignedInteger& other) : absolute(other.absolute), sign(other.sign) {}
@@ -650,13 +943,17 @@ public:
     SignedInteger(const char* value) {
         VALIDITY_CHECK(value, std::invalid_argument, "SignedInteger constructor error: the provided C-style string is a null pointer.")
         VALIDITY_CHECK(*value, std::invalid_argument, "SignedInteger constructor error: the provided C-style string is empty. SignedInteger can only be constructed from non-empty strings containing only digits (optionally prefixed with '-').")
-        VALIDITY_CHECK(std::all_of(value + (*value == '-'), value + std::strlen(value), [](char digit) -> bool { return std::isdigit(digit); }), std::invalid_argument, "SignedInteger constructor error: the provided C-style string value = \"" + std::string(value) + "\" contains non-digit characters. SignedInteger can only be constructed from non-empty strings containing only digits (optionally prefixed with '-').")
+        VALIDITY_CHECK(std::all_of(value + (*value == '-'), value + std::strlen(value), [](char digit) -> bool { return std::isdigit(digit); }), std::invalid_argument, "SignedInteger constructor error: the provided C-style string value = "
+                                                                                                                                                                        " + std::string(value) + "
+                                                                                                                                                                        " contains non-digit characters. SignedInteger can only be constructed from non-empty strings containing only digits (optionally prefixed with '-').")
         absolute = value + (sign = *value == '-'), sign = sign && bool(absolute);
     }
 
     SignedInteger(const std::string& value) {
         VALIDITY_CHECK(value.size(), std::invalid_argument, "SignedInteger constructor error: the provided string is empty. SignedInteger can only be constructed from non-empty strings containing only digits (optionally prefixed with '-').")
-        VALIDITY_CHECK(std::all_of(value.begin() + (value.front() == '-'), value.end(), [](char digit) -> bool { return std::isdigit(digit); }), std::invalid_argument, "SignedInteger constructor error: the provided string value = \"" + value + "\" contains non-digit characters. SignedInteger can only be constructed from non-empty strings containing only digits (optionally prefixed with '-').")
+        VALIDITY_CHECK(std::all_of(value.begin() + (value.front() == '-'), value.end(), [](char digit) -> bool { return std::isdigit(digit); }), std::invalid_argument, "SignedInteger constructor error: the provided string value = "
+                                                                                                                                                                        " + value + "
+                                                                                                                                                                        " contains non-digit characters. SignedInteger can only be constructed from non-empty strings containing only digits (optionally prefixed with '-').")
         absolute = value.data() + (sign = value.front() == '-'), sign = sign && bool(absolute);
     }
 
@@ -692,13 +989,17 @@ public:
     SignedInteger& operator=(const char* value) {
         VALIDITY_CHECK(value, std::invalid_argument, "SignedInteger operator= error: the provided C-style string is a null pointer.")
         VALIDITY_CHECK(*value, std::invalid_argument, "SignedInteger operator= error: the provided C-style string is empty. SignedInteger can only be assigned from non-empty strings containing only digits (optionally prefixed with '-').")
-        VALIDITY_CHECK(std::all_of(value + (*value == '-'), value + std::strlen(value), [](char digit) -> bool { return std::isdigit(digit); }), std::invalid_argument, "SignedInteger operator= error: the provided C-style string value = \"" + std::string(value) + "\" contains non-digit characters. SignedInteger can only be assigned from non-empty strings containing only digits (optionally prefixed with '-').")
+        VALIDITY_CHECK(std::all_of(value + (*value == '-'), value + std::strlen(value), [](char digit) -> bool { return std::isdigit(digit); }), std::invalid_argument, "SignedInteger operator= error: the provided C-style string value = "
+                                                                                                                                                                        " + std::string(value) + "
+                                                                                                                                                                        " contains non-digit characters. SignedInteger can only be assigned from non-empty strings containing only digits (optionally prefixed with '-').")
         return absolute = value + (sign = *value == '-'), sign = sign && bool(absolute), *this;
     }
 
     SignedInteger& operator=(const std::string& value) {
         VALIDITY_CHECK(value.size(), std::invalid_argument, "SignedInteger operator= error: the provided string is empty. SignedInteger can only be assigned from non-empty strings containing only digits (optionally prefixed with '-').")
-        VALIDITY_CHECK(std::all_of(value.begin() + (value.front() == '-'), value.end(), [](char digit) -> bool { return std::isdigit(digit); }), std::invalid_argument, "SignedInteger operator= error: the provided string value = \"" + value + "\" contains non-digit characters. SignedInteger can only be assigned from non-empty strings containing only digits (optionally prefixed with '-').")
+        VALIDITY_CHECK(std::all_of(value.begin() + (value.front() == '-'), value.end(), [](char digit) -> bool { return std::isdigit(digit); }), std::invalid_argument, "SignedInteger operator= error: the provided string value = "
+                                                                                                                                                                        " + value + "
+                                                                                                                                                                        " contains non-digit characters. SignedInteger can only be assigned from non-empty strings containing only digits (optionally prefixed with '-').")
         return absolute = value.data() + (sign = value.front() == '-'), sign = sign && bool(absolute), *this;
     }
 
@@ -816,7 +1117,7 @@ public:
 
     SignedInteger& operator%=(const SignedInteger& other) {
         VALIDITY_CHECK(bool(other), std::invalid_argument, "SignedInteger modulus error: modulus is zero.")
-        absolute %= other.absolute, sign = sign && bool(absolute);
+        *this -= (*this / other) * other;
         return *this;
     }
 
@@ -830,5 +1131,5 @@ SignedInteger operator""_SI(const char* literal, std::size_t) {
 }
 
 #undef VALIDITY_CHECK
-
+#undef __CONSTEXPR
 #endif

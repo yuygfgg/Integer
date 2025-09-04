@@ -8,10 +8,10 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 # 设置编译选项
 if(MSVC)
-    add_compile_options(/W4 /arch:AVX2)
+    add_compile_options(/W4)
     add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
 else()
-    add_compile_options(-Wall -Wextra -mavx2 -mfma)
+    add_compile_options(-Wall -Wextra -march=native)
     if(CMAKE_BUILD_TYPE STREQUAL "Release")
         add_compile_options(-O3 -DNDEBUG)
     else()
@@ -33,16 +33,16 @@ target_include_directories(Integer
 # 设置编译器要求
 target_compile_features(Integer INTERFACE cxx_std_14)
 
-# 检查是否支持AVX2
-include(CheckCXXCompilerFlag)
-check_cxx_compiler_flag("-mavx2" COMPILER_SUPPORTS_AVX2)
-if(NOT COMPILER_SUPPORTS_AVX2 AND NOT MSVC)
-    message(WARNING "Compiler does not support AVX2. Performance may be reduced.")
-endif()
-
 # 添加示例（可选）
 option(BUILD_EXAMPLES "Build example programs" ON)
 if(BUILD_EXAMPLES)
+    # Since examples are not part of the library, we can enable AVX2 specifically for them if available
+    # to ensure they run with high performance for demonstration purposes.
+    include(CheckCXXCompilerFlag)
+    check_cxx_compiler_flag("-mavx2" COMPILER_SUPPORTS_AVX2)
+    if(COMPILER_SUPPORTS_AVX2)
+        set(EXAMPLE_COMPILE_FLAGS "-mavx2 -mfma")
+    endif()
     add_subdirectory(examples)
 endif()
 
@@ -105,8 +105,4 @@ message(STATUS "  C++ Standard: ${CMAKE_CXX_STANDARD}")
 message(STATUS "  Build Type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "  Build Examples: ${BUILD_EXAMPLES}")
 message(STATUS "  Build Tests: ${BUILD_TESTS}")
-if(COMPILER_SUPPORTS_AVX2 OR MSVC)
-    message(STATUS "  AVX2 Support: YES")
-else()
-    message(STATUS "  AVX2 Support: NO")
-endif()
+message(STATUS "  Host-specific optimizations: Enabled")
