@@ -55,7 +55,7 @@ int main() {
     std::cout << "\n5. 有符号大整数:" << std::endl;
     SignedInteger signed_a = -123456789;
     SignedInteger signed_b("987654321");
-    SignedInteger signed_c = -"42"_SI;
+    SignedInteger signed_c("-42");
     
     std::cout << "signed_a = " << signed_a << std::endl;
     std::cout << "signed_b = " << signed_b << std::endl;

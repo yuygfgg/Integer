@@ -16,6 +16,8 @@
 - [特色功能](#特色功能)
 - [快速开始](#快速开始)
 - [使用方法](#使用方法)
+- [示例程序](#示例程序)
+- [测试方法](#测试方法)
 - [效率展示](#效率展示)
 - [完整功能](#完整功能)
   - [`UnsignedInteger`](#unsignedinteger)
@@ -44,7 +46,7 @@
 
 # 快速开始
 
-详细的示例可以参考[基础使用示例](./basic_usage.cpp)和[进阶使用示例](./advanced_demo.cpp)。
+详细的示例可以参考[基础使用示例](./examples/basic_usage.cpp)和[进阶使用示例](./examples/advanced_demo.cpp)。
 
 ```cpp
 #include "Integer.h"
@@ -76,6 +78,57 @@ int main() {
   1. 建议在编译参数中启用 `-march=native`，以自动使用所在平台可用的 SIMD 指令集（x86_64 上为 AVX2，AArch64 上为 NEON）获得最佳性能；但这不是必须条件，未启用时库会自动选择可用实现（NEON 或纯标量）。同时确保 C++ 版本在 C++11 及以上。
   2. 使用 GCC 编译器。
 3. 在需要该库的头文件 `#include "Integer.h"` 即可。
+
+# 示例程序
+
+启用并构建示例（`examples/basic_usage.cpp`、`examples/advanced_demo.cpp`）：
+
+```bash
+cmake -S . -B build -DBUILD_EXAMPLES=ON
+cmake --build build -j
+```
+
+运行示例：
+
+- macOS/Linux: `./build/examples/basic_usage`、`./build/examples/advanced_demo`
+- Windows: `build\\examples\\basic_usage.exe`、`build\\examples\\advanced_demo.exe`
+
+可选：在支持的编译器上尝试开启 SIMD 优化（自动选择 AVX2/NEON）：
+
+```bash
+cmake -S . -B build -DBUILD_EXAMPLES=ON -DENABLE_EXAMPLE_SIMD=ON
+cmake --build build -j
+```
+
+安装示例（可选）：
+
+```bash
+cmake -S . -B build -DBUILD_EXAMPLES=ON -DINSTALL_EXAMPLES=ON
+cmake --build build -j
+cmake --install build
+```
+
+# 测试方法
+
+本项目使用 CTest 管理测试，测试由 `tests/run_tests.py` 驱动，自动对 SIMD 与 Fallback 两种实现分别进行确定性与随机用例验证，并在编译阶段启用 AddressSanitizer 与 UBSan。
+
+运行步骤：
+
+```bash
+# 配置使能测试
+cmake -S . -B build -DBUILD_TESTS=ON
+
+# 构建（如需要）
+cmake --build build -j
+
+# 运行测试
+cd build && ctest --output-on-failure
+```
+
+说明：
+
+- 测试默认使用 CMake 的 `CMAKE_CXX_COMPILER` 编译 `tests/integer_cli.cpp`。在 Windows 平台建议使用 Clang 或 GCC 兼容工具链；如使用 MSVC 且遇到编译参数不兼容问题，可改用 Clang，或在类 Unix 环境（如 WSL）运行。
+- 直接运行脚本也可：`python3 tests/run_tests.py`（不经 CTest）。
 
 # 效率展示
 

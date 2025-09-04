@@ -99,3 +99,9 @@ puzzle/
 # Test executables
 tests/integer_cli
 tests/integer_cli_fallback
+
+# Cache files
+.cache/*
+
+# Debug symbols
+*/*.dSYM/*

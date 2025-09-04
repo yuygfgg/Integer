@@ -200,8 +200,7 @@ namespace detail {
             float64x2_t term1 = vmulq_laneq_f64(second, first, 0);
             float64x2_t second_swapped = vextq_f64(second, second, 1);
             float64x2_t term2_raw = vmulq_laneq_f64(second_swapped, first, 1);
-
-            const float64x2_t mask_neg_real = {-1.0, 1.0};
+            constexpr float64x2_t mask_neg_real = {-1.0, 1.0};
             return vfmaq_f64(term1, term2_raw, mask_neg_real);
         }
 

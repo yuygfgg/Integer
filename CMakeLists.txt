@@ -40,16 +40,25 @@ target_include_directories(Integer
 target_compile_features(Integer INTERFACE cxx_std_14)
 
 # 添加示例（可选）
-option(BUILD_EXAMPLES "Build example programs" ON)
+option(BUILD_EXAMPLES "Build example programs" OFF)
 if(BUILD_EXAMPLES)
-    # Optionally enable AVX2 for examples if supported
-    option(ENABLE_EXAMPLE_AVX2 "Enable AVX2 for examples if supported" OFF)
+    # Optionally enable SIMD for examples (AVX2/NEON). When OFF, explicitly undefine feature macros.
+    option(ENABLE_EXAMPLE_SIMD "Enable SIMD (AVX2/NEON) for examples if supported" ON)
     include(CheckCXXCompilerFlag)
     check_cxx_compiler_flag("-mavx2" COMPILER_SUPPORTS_AVX2)
-    if(ENABLE_EXAMPLE_AVX2 AND COMPILER_SUPPORTS_AVX2)
-        set(EXAMPLE_COMPILE_FLAGS "-mavx2 -mfma")
+    if(ENABLE_EXAMPLE_SIMD)
+        if(COMPILER_SUPPORTS_AVX2)
+            set(EXAMPLE_COMPILE_FLAGS -mavx2 -mfma)
+        endif()
+    else()
+        # Force scalar fallback in examples by undefining detection macros
+        set(EXAMPLE_COMPILE_FLAGS -U__AVX2__ -U__ARM_NEON__)
     endif()
-    add_subdirectory(examples)
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/examples/CMakeLists.txt")
+        add_subdirectory(examples)
+    else()
+        message(STATUS "Examples directory not found. Skipping examples build.")
+    endif()
 endif()
 
 # 添加测试（可选）
@@ -80,7 +89,7 @@ install(TARGETS Integer
 
 # 创建并安装包配置文件
 configure_package_config_file(
-    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/IntegerConfig.cmake.in"
+    "${CMAKE_CURRENT_SOURCE_DIR}/IntegerConfig.cmake.in"
     "${CMAKE_CURRENT_BINARY_DIR}/IntegerConfig.cmake"
     INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/Integer
 )

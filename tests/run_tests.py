@@ -15,7 +15,7 @@ HDR = ROOT / "Integer.h"
 CLANG = os.environ.get("CLANG", "clang++")
 COMMON_FLAGS = [
     "-std=c++17",
-    "-O2",
+    "-g2",
     "-Wall",
     "-Wextra",
     "-Wpedantic",
