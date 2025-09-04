@@ -50,12 +50,10 @@
 namespace detail {
     constexpr std::uint32_t log2(std::uint32_t n) {
         VALIDITY_CHECK(n, std::invalid_argument, "log2 error: the provided integer is zero.");
-#if defined(__clang__)
-        return __builtin_clz(1) - __builtin_clz(n);
-#elif defined(__GNUC__)
+#if defined(__GNUC__) && !defined(__clang__)
         return std::__lg(n);
 #else
-        return n <= 1 ? 0 : 1 + log2(n >> 1);
+        return std::log2(n);
 #endif
     }
 
