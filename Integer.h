@@ -392,8 +392,8 @@ namespace detail {
 
         void frequencyDomainPointwiseMultiply(std::complex<double>* firstArray, std::complex<double>* secondArray, std::uint32_t transformSize) {
             const double normalizationFactor = 1.0 / transformSize, scalingFactor = normalizationFactor * 0.25;
-            firstArray[0] *= secondArray[0] * normalizationFactor;
-            firstArray[1] *= secondArray[1] * normalizationFactor;
+            firstArray[0] = complexScalarMultiply(complexMultiplySpecial(firstArray[0], secondArray[0]), normalizationFactor);
+            firstArray[1] = complexScalarMultiply(complexMultiply(firstArray[1], secondArray[1]), normalizationFactor);
             for (std::uint32_t blockStart = 2, blockEnd = 3; blockStart != transformSize; blockStart <<= 1, blockEnd <<= 1) {
                 for (std::uint32_t forwardIndex = blockStart, backwardIndex = forwardIndex + blockStart - 1; forwardIndex != blockEnd; ++forwardIndex, --backwardIndex) {
                     const std::complex<double> firstEven = firstArray[forwardIndex] + std::conj(firstArray[backwardIndex]), firstOdd = firstArray[forwardIndex] - std::conj(firstArray[backwardIndex]);
@@ -544,7 +544,7 @@ class UnsignedInteger {
         const std::uint32_t newPrecision = halfPrecision + truncated.length;
         UnsignedInteger approximateInverse = truncated.computeInverse(newPrecision);
         UnsignedInteger result = (approximateInverse + approximateInverse).leftShift(precisionBits - newPrecision - shiftBack) - (*this * approximateInverse * approximateInverse).rightShift(2 * (newPrecision + shiftBack) - precisionBits);
-        return result;
+        return --result;
     }
 
     std::pair<UnsignedInteger, UnsignedInteger> divisionAndModulus(const UnsignedInteger& other) const {
