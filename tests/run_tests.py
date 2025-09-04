@@ -22,7 +22,7 @@ COMMON_FLAGS = [
     "-DENABLE_VALIDITY_CHECK",
 ]
 ASAN_UBSAN_FLAGS = [
-    # "-fsanitize=address,undefined",
+    "-fsanitize=address,undefined",
     "-fno-omit-frame-pointer",
 ]
 

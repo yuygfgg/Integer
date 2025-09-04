@@ -103,7 +103,7 @@ namespace detail {
             delete[] twiddleFactors;
         }
 
-        static inline __m128d complexMultiply(__m128d first, __m128d second) {
+        static inline __m128d complexMultiply(__m128d first, __m128d second) { // __m128d reg = [imaginary_part, real_part] 
             return _mm_fmaddsub_pd(_mm_unpacklo_pd(first, first), second, _mm_unpackhi_pd(first, first) * _mm_permute_pd(second, 1));
         }
 
@@ -197,14 +197,19 @@ namespace detail {
         }
 
         static inline float64x2_t complexMultiply(float64x2_t first, float64x2_t second) {
-            return vcmlaq_f64(vdupq_n_f64(0.0), first, second);
+            float64x2_t R1 = vdupq_n_f64(vgetq_lane_f64(first, 0));
+            float64x2_t Term1 = vmulq_f64(R1, second);
+            float64x2_t I1 = vdupq_n_f64(vgetq_lane_f64(first, 1));
+            float64x2_t second_swapped = vcombine_f64(vget_high_f64(second), vget_low_f64(second));
+            const float64x2_t mask_neg_real = (float64x2_t){-1.0, 1.0};
+            float64x2_t Term2_raw = vmulq_f64(I1, second_swapped);
+            return vfmaq_f64(Term1, Term2_raw, mask_neg_real);
         }
 
         static inline float64x2_t complexMultiplyConjugate(float64x2_t first, float64x2_t second) {
-            const float64x2_t conjugate_mask = {1.0, -1.0};
+            const float64x2_t conjugate_mask = (float64x2_t){1.0, -1.0};
             float64x2_t second_conjugated = vmulq_f64(second, conjugate_mask);
-            float64x2_t zero = vdupq_n_f64(0.0);
-            return vcmlaq_f64(zero, first, second_conjugated);
+            return complexMultiply(first, second_conjugated);
         }
 
         static inline float64x2_t complexMultiplySpecial(float64x2_t first, float64x2_t second) {
