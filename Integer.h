@@ -24,7 +24,6 @@
 #include <string>
 #include <type_traits>
 #include <utility>
-#include <vector>
 
 #ifdef ENABLE_VALIDITY_CHECK
 #define VALIDITY_CHECK(condition, errorType, message) \
@@ -189,7 +188,7 @@ namespace detail {
         std::uint32_t length;
 
         TransformHelper() : twiddleFactors(new float64x2_t[1]()), length(1) {
-            *twiddleFactors = (float64x2_t){1.0, 0.0};
+            *twiddleFactors = vsetq_lane_f64(0.0, vsetq_lane_f64(1.0, vdupq_n_f64(0.0), 0), 1);
         }
 
         ~TransformHelper() noexcept {
@@ -200,7 +199,7 @@ namespace detail {
             float64x2_t term1 = vmulq_laneq_f64(second, first, 0);
             float64x2_t second_swapped = vextq_f64(second, second, 1);
             float64x2_t term2_raw = vmulq_laneq_f64(second_swapped, first, 1);
-            constexpr float64x2_t mask_neg_real = {-1.0, 1.0};
+            const float64x2_t mask_neg_real = vsetq_lane_f64(1.0, vsetq_lane_f64(-1.0, vdupq_n_f64(0.0), 0), 1);
             return vfmaq_f64(term1, term2_raw, mask_neg_real);
         }
 
@@ -208,7 +207,7 @@ namespace detail {
             float64x2_t second_swapped = vextq_f64(second, second, 1);
             float64x2_t term1 = vmulq_laneq_f64(second_swapped, first, 1);
             float64x2_t term2_raw = vmulq_laneq_f64(second, first, 0);
-            constexpr float64x2_t mask_add_real_sub_imag = {1.0, -1.0};
+            const float64x2_t mask_add_real_sub_imag = vsetq_lane_f64(-1.0, vsetq_lane_f64(1.0, vdupq_n_f64(0.0), 0), 1);
             return vfmaq_f64(term1, term2_raw, mask_add_real_sub_imag);
         }
 
@@ -229,8 +228,8 @@ namespace detail {
                 const double angleStep = std::acos(-1.0) / halfSize, fineAngleStep = angleStep / halfSize;
                 for (std::uint32_t i = 0, j = (halfSize * 3) >> 1, phaseAccumulator = 0; i != halfSize; phaseAccumulator -= halfSize - (j >> __builtin_ctz(++i))) {
                     std::complex<double> first = std::polar(1.0, phaseAccumulator * angleStep), second = std::polar(1.0, phaseAccumulator * fineAngleStep);
-                    baseFactors[i] = (float64x2_t){first.real(), first.imag()};
-                    baseFactors[i | halfSize] = (float64x2_t){second.real(), second.imag()};
+                    baseFactors[i] = vsetq_lane_f64(first.imag(), vsetq_lane_f64(first.real(), vdupq_n_f64(0.0), 0), 1);
+                    baseFactors[i | halfSize] = vsetq_lane_f64(second.imag(), vsetq_lane_f64(second.real(), vdupq_n_f64(0.0), 0), 1);
                 }
                 float64x2_t* newFactors = new float64x2_t[transformLength >> 1];
                 std::memcpy(newFactors, twiddleFactors, length * sizeof(float64x2_t));
@@ -281,8 +280,8 @@ namespace detail {
             const double normalizationFactor = 1.0 / transformSize, scalingFactor = normalizationFactor * 0.25;
             firstArray[0] = complexScalarMultiply(complexMultiplySpecial(firstArray[0], secondArray[0]), normalizationFactor);
             firstArray[1] = complexScalarMultiply(complexMultiply(firstArray[1], secondArray[1]), normalizationFactor);
-            const float64x2_t conjugateMask = (float64x2_t){1.0, -1.0};
-            const float64x2_t negateMask = (float64x2_t){-1.0, -1.0};
+            const float64x2_t conjugateMask = vsetq_lane_f64(-1.0, vsetq_lane_f64(1.0, vdupq_n_f64(0.0), 0), 1);
+            const float64x2_t negateMask = vdupq_n_f64(-1.0);
             for (std::uint32_t blockStart = 2, blockEnd = 3; blockStart != transformSize; blockStart <<= 1, blockEnd <<= 1) {
                 for (std::uint32_t forwardIndex = blockStart, backwardIndex = forwardIndex + blockStart - 1; forwardIndex != blockEnd; ++forwardIndex, --backwardIndex) {
                     auto conj = [&](float64x2_t v) { return vmulq_f64(v, conjugateMask); };
@@ -629,8 +628,15 @@ class UnsignedInteger {
     }
 
     UnsignedInteger& operator=(UnsignedInteger&& other) noexcept {
-        if (digits != other.digits)
-            digits = other.digits, length = other.length, capacity = other.capacity, other.digits = new std::uint32_t[other.length = other.capacity = 1]();
+        if (this != &other) {
+            if (digits != other.digits) {
+                delete[] digits;
+                digits = other.digits;
+                length = other.length;
+                capacity = other.capacity;
+                other.digits = new std::uint32_t[other.length = other.capacity = 1]();
+            }
+        }
         return *this;
     }
 
@@ -706,9 +712,10 @@ class UnsignedInteger {
 
     template <typename signedIntegral, typename std::enable_if<std::is_signed<signedIntegral>::value && !std::is_floating_point<signedIntegral>::value>::type* = nullptr>
     operator signedIntegral() const {
-        signedIntegral result = 0;
-        for (std::uint32_t* i = digits + length; i != digits; result = result * signedIntegral(Base) + signedIntegral(*--i));
-        return result;
+        using UnsignedT = typename std::make_unsigned<signedIntegral>::type;
+        UnsignedT result = 0;
+        for (std::uint32_t* i = digits + length; i != digits; result = result * UnsignedT(Base) + UnsignedT(*--i));
+        return static_cast<signedIntegral>(result);
     }
 
     template <typename floatingPoint, typename std::enable_if<std::is_floating_point<floatingPoint>::value>::type* = nullptr>
@@ -864,8 +871,8 @@ class UnsignedInteger {
         if (allocatedSize < transformLength << 1)
             delete[] firstArray, delete[] secondArray, firstArray = new double[transformLength << 1](), secondArray = new double[transformLength << 1](), allocatedSize = transformLength << 1;
         std::memset(firstArray, 0, transformLength << 4), std::memset(secondArray, 0, transformLength << 4);
-        for (std::uint32_t i = 0; i != length; firstArray[i << 1] = digits[i] % 10000u, firstArray[i << 1 | 1] = digits[i] / 10000u, ++i);
-        for (std::uint32_t i = 0; i != other.length; secondArray[i << 1] = other.digits[i] % 10000u, secondArray[i << 1 | 1] = other.digits[i] / 10000u, ++i);
+        for (std::uint32_t i = 0; i != length; firstArray[i << 1] = static_cast<double>(digits[i] % 10000u), firstArray[i << 1 | 1] = std::floor(static_cast<double>(digits[i]) / 10000.0), ++i);
+        for (std::uint32_t i = 0; i != other.length; secondArray[i << 1] = static_cast<double>(other.digits[i] % 10000u), secondArray[i << 1 | 1] = std::floor(static_cast<double>(other.digits[i]) / 10000.0), ++i);
 #if defined(__AVX2__)
         detail::T.resize(transformLength), detail::T.decimationInFrequency(reinterpret_cast<__m128d*>(firstArray), transformLength), detail::T.decimationInFrequency(reinterpret_cast<__m128d*>(secondArray), transformLength);
         detail::T.frequencyDomainPointwiseMultiply(reinterpret_cast<__m128d*>(firstArray), reinterpret_cast<__m128d*>(secondArray), transformLength), detail::T.decimationInTime(reinterpret_cast<__m128d*>(firstArray), transformLength);
@@ -927,7 +934,7 @@ class UnsignedInteger {
     }
 };
 
-UnsignedInteger operator""_UI(const char* literal, std::size_t) {
+inline UnsignedInteger operator""_UI(const char* literal, std::size_t) {
     return UnsignedInteger(literal);
 }
 
@@ -1036,7 +1043,11 @@ class SignedInteger {
 
     template <typename signedIntegral, typename std::enable_if<std::is_signed<signedIntegral>::value && !std::is_floating_point<signedIntegral>::value>::type* = nullptr>
     operator signedIntegral() const {
-        return sign ? -signedIntegral(absolute) : signedIntegral(absolute);
+        using UnsignedT = typename std::make_unsigned<signedIntegral>::type;
+        UnsignedT magnitude = static_cast<UnsignedT>(absolute);
+        if (!sign) return static_cast<signedIntegral>(magnitude);
+        UnsignedT twosComplement = UnsignedT(0) - magnitude;
+        return static_cast<signedIntegral>(twosComplement);
     }
 
     template <typename floatingPoint, typename std::enable_if<std::is_floating_point<floatingPoint>::value>::type* = nullptr>
@@ -1142,7 +1153,7 @@ class SignedInteger {
     }
 };
 
-SignedInteger operator""_SI(const char* literal, std::size_t) {
+inline SignedInteger operator""_SI(const char* literal, std::size_t) {
     return SignedInteger(literal);
 }
 
