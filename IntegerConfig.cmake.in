@@ -9,11 +9,11 @@ if(CMAKE_CXX_STANDARD LESS 14)
     message(WARNING "Integer library requires C++14 or later. Current standard: ${CMAKE_CXX_STANDARD}")
 endif()
 
-# 检查AVX2支持（可选警告）
+# 可选性能提示
 include(CheckCXXCompilerFlag)
-check_cxx_compiler_flag("-mavx2" COMPILER_SUPPORTS_AVX2)
-if(NOT COMPILER_SUPPORTS_AVX2 AND NOT MSVC)
-    message(STATUS "Integer: Compiler does not support AVX2. Performance may be reduced.")
+check_cxx_compiler_flag("-mavx2" INTEGER_COMPILER_SUPPORTS_AVX2)
+if(NOT INTEGER_COMPILER_SUPPORTS_AVX2 AND NOT MSVC)
+    message(STATUS "Integer: AVX2 not detected; NEON or scalar path will be used if applicable. For best performance you may enable -march=native.")
 endif()
 
 # 包含目标文件

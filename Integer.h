@@ -103,7 +103,7 @@ namespace detail {
             delete[] twiddleFactors;
         }
 
-        static inline __m128d complexMultiply(__m128d first, __m128d second) { // __m128d reg = [imaginary_part, real_part] 
+        static inline __m128d complexMultiply(__m128d first, __m128d second) {
             return _mm_fmaddsub_pd(_mm_unpacklo_pd(first, first), second, _mm_unpackhi_pd(first, first) * _mm_permute_pd(second, 1));
         }
 
@@ -197,34 +197,30 @@ namespace detail {
         }
 
         static inline float64x2_t complexMultiply(float64x2_t first, float64x2_t second) {
-            float64x2_t R1 = vdupq_n_f64(vgetq_lane_f64(first, 0));
-            float64x2_t Term1 = vmulq_f64(R1, second);
-            float64x2_t I1 = vdupq_n_f64(vgetq_lane_f64(first, 1));
-            float64x2_t second_swapped = vcombine_f64(vget_high_f64(second), vget_low_f64(second));
-            const float64x2_t mask_neg_real = (float64x2_t){-1.0, 1.0};
-            float64x2_t Term2_raw = vmulq_f64(I1, second_swapped);
-            return vfmaq_f64(Term1, Term2_raw, mask_neg_real);
+            float64x2_t term1 = vmulq_laneq_f64(second, first, 0);
+            float64x2_t second_swapped = vextq_f64(second, second, 1);
+            float64x2_t term2_raw = vmulq_laneq_f64(second_swapped, first, 1);
+
+            const float64x2_t mask_neg_real = {-1.0, 1.0};
+            return vfmaq_f64(term1, term2_raw, mask_neg_real);
         }
 
         static inline float64x2_t complexMultiplyConjugate(float64x2_t first, float64x2_t second) {
-            const float64x2_t conjugate_mask = (float64x2_t){1.0, -1.0};
-            float64x2_t second_conjugated = vmulq_f64(second, conjugate_mask);
-            return complexMultiply(first, second_conjugated);
+            float64x2_t second_swapped = vextq_f64(second, second, 1);
+            float64x2_t term1 = vmulq_laneq_f64(second_swapped, first, 1);
+            float64x2_t term2_raw = vmulq_laneq_f64(second, first, 0);
+            constexpr float64x2_t mask_add_real_sub_imag = {1.0, -1.0};
+            return vfmaq_f64(term1, term2_raw, mask_add_real_sub_imag);
         }
 
         static inline float64x2_t complexMultiplySpecial(float64x2_t first, float64x2_t second) {
-            double r1 = vgetq_lane_f64(first, 0);
-            double i1 = vgetq_lane_f64(first, 1);
-            float64x2_t term1 = vmulq_f64(second, vdupq_n_f64(r1));
-            float64x1_t s_high = vget_high_f64(second);
-            float64x1_t s_low = vget_low_f64(second);
-            float64x2_t second_rev = vcombine_f64(s_high, s_low);
-            float64x2_t term2 = vmulq_f64(second_rev, vdupq_n_f64(i1));
-            return vaddq_f64(term1, term2);
+            float64x2_t term1 = vmulq_laneq_f64(second, first, 0);
+            float64x2_t second_rev = vextq_f64(second, second, 1);
+            return vfmaq_laneq_f64(term1, second_rev, first, 1);
         }
 
         static inline float64x2_t complexScalarMultiply(float64x2_t complex, double scalar) {
-            return vmulq_f64(complex, vdupq_n_f64(scalar));
+            return vmulq_n_f64(complex, scalar);
         }
 
         void resize(std::uint32_t transformLength) {

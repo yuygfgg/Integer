@@ -73,7 +73,7 @@ int main() {
 
 1. 下载或复制 `Integer.h` 的内容到本地。
 2. 检查编译器配置：
-  1. 编译参数应当包括 `-march=native` 以启用 AVX2 指令集，同时确保 C++ 版本在 C++11 及以上。
+  1. 建议在编译参数中启用 `-march=native`，以自动使用所在平台可用的 SIMD 指令集（x86_64 上为 AVX2，AArch64 上为 NEON）获得最佳性能；但这不是必须条件，未启用时库会自动选择可用实现（NEON 或纯标量）。同时确保 C++ 版本在 C++11 及以上。
   2. 使用 GCC 编译器。
 3. 在需要该库的头文件 `#include "Integer.h"` 即可。
 
@@ -306,11 +306,11 @@ copies or substantial portions of the Software.
 
 - 我的编程环境非常老，看你的代码一堆不认识的语法，真能过编吗？
 
-本模板对语言环境的要求较为宽松。你只需要一个支持 C++11 和 AVX2 指令集的 GCC 编译器即可通过编译。
+本模板对语言环境的要求较为宽松。你只需要一个支持 C++11 的 GCC 编译器即可通过编译。为获得最佳性能，建议添加 `-march=native` 以启用可用的 SIMD（x86_64 上为 AVX2，AArch64 上为 NEON）；但这不是必须，未启用时库会自动退回 NEON 或纯标量实现。
 
 - 编译时报错 `inlining failed in call to 'always_inline' '__m128d _mm_fmaddsub_pd(__m128d, __m128d, __m128d)': target specific option mismatch` 是怎么回事？
 
-那是因为你没有添加 AVX2 指令集支持。请在编译参数中添加 `march=native`。
+这通常是未启用对应 SIMD 指令集导致（例如在 x86_64 上未启用 AVX2）。你可以在编译参数中添加 `-march=native` 或针对性开关（如 `-mavx2`）以获得更高性能；也可以不启用，库会自动使用标量实现，但性能会有所下降。
 
 - 你的模板怎么不支持 `divmod`？
 
