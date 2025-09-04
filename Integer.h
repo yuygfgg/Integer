@@ -718,7 +718,7 @@ class UnsignedInteger {
         return result;
     }
 
-    operator const char*() const {
+    explicit operator const char*() const {
         thread_local char* result = nullptr;
         thread_local std::uint32_t resultLength = 0;
         if (!length) {
@@ -1044,7 +1044,7 @@ class SignedInteger {
         return sign ? -floatingPoint(absolute) : floatingPoint(absolute);
     }
 
-    operator const char*() const {
+    explicit operator const char*() const {
         thread_local char* result = nullptr;
         thread_local std::uint32_t resultLength = 0;
         const char* absoluteString = static_cast<const char*>(absolute);
