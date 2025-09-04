@@ -1,9 +1,10 @@
 # Integer - 高性能C++任意精度整数库
 
 - [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-- [![C++](https://img.shields.io/badge/C%2B%2B-11%2B-blue.svg)](https://en.cppreference.com/)
+- [![C++](https://img.shields.io/badge/C%2B%2B-14%2B-blue.svg)](https://en.cppreference.com/)
 - [![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20Windows%20%7C%20macOS-lightgrey.svg)]()
 - [![Compiler](https://img.shields.io/badge/Compiler-GCC-green.svg)](https://gcc.gnu.org/)
+- [![CI](../../actions/workflows/ci.yml/badge.svg)](../../actions/workflows/ci.yml)
 
 > **目前最高效的十进制高精度整数库** - 在 Library Checker 上打破多项性能记录的 Header-Only C++ 库
 
@@ -124,6 +125,8 @@ cmake --build build -j
 # 运行测试
 cd build && ctest --output-on-failure
 ```
+
+此外，已启用 GitHub Actions 持续集成：在 x86_64 与 arm64 平台（Ubuntu 与 macOS）上自动构建并运行全部测试，状态见上方 CI 徽章。
 
 说明：
 
