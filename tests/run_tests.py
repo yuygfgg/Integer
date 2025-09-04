@@ -141,14 +141,14 @@ def test_deterministic(cli_path: Path):
     print(f"[OK] deterministic tests passed on {cli_path.name}")
 
 
-def rand_bigint_str(max_digits=300):
+def rand_bigint_str(max_digits=1024):
     digits = random.randint(1, max_digits)
     s = "".join(random.choice(string.digits) for _ in range(digits))
     s = s.lstrip("0")
     return s if s else "0"
 
 
-def rand_signed_str(max_digits=300):
+def rand_signed_str(max_digits=1024):
     s = rand_bigint_str(max_digits)
     if s != "0" and random.random() < 0.5:
         s = "-" + s
