@@ -15,13 +15,15 @@ jobs:
       fail-fast: false
       matrix:
         cmake_build_type: [Release]
-        os: [ubuntu-24.04, macos-13, macos-14]
+        os: [ubuntu-24.04, macos-13, macos-14, ubuntu-24.04-arm]
         include:
           - os: ubuntu-24.04
             arch: x86_64
           - os: macos-13
             arch: x86_64
           - os: macos-14
+            arch: arm64
+          - os: ubuntu-24.04-arm
             arch: arm64
     steps:
       - name: Checkout
