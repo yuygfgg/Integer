@@ -876,7 +876,7 @@ class UnsignedInteger {
 #if defined(__AVX2__)
         detail::T.resize(transformLength), detail::T.decimationInFrequency(reinterpret_cast<__m128d*>(firstArray), transformLength), detail::T.decimationInFrequency(reinterpret_cast<__m128d*>(secondArray), transformLength);
         detail::T.frequencyDomainPointwiseMultiply(reinterpret_cast<__m128d*>(firstArray), reinterpret_cast<__m128d*>(secondArray), transformLength), detail::T.decimationInTime(reinterpret_cast<__m128d*>(firstArray), transformLength);
-#else // __ARM_NEON__
+#else
         detail::T.resize(transformLength), detail::T.decimationInFrequency(reinterpret_cast<float64x2_t*>(firstArray), transformLength), detail::T.decimationInFrequency(reinterpret_cast<float64x2_t*>(secondArray), transformLength);
         detail::T.frequencyDomainPointwiseMultiply(reinterpret_cast<float64x2_t*>(firstArray), reinterpret_cast<float64x2_t*>(secondArray), transformLength), detail::T.decimationInTime(reinterpret_cast<float64x2_t*>(firstArray), transformLength);
 #endif

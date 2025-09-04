@@ -3,7 +3,7 @@
 - [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 - [![C++](https://img.shields.io/badge/C%2B%2B-14%2B-blue.svg)](https://en.cppreference.com/)
 - [![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20Windows%20%7C%20macOS-lightgrey.svg)]()
-- [![Compiler](https://img.shields.io/badge/Compiler-GCC-green.svg)](https://gcc.gnu.org/)
+- [![Compiler](https://img.shields.io/badge/Compiler-GCC-green.svg)](https://gcc.gnu.org/), [![Compiler](https://img.shields.io/badge/Compiler-Clang-green.svg)](https://clang.llvm.org/)
 - [![CI](../../actions/workflows/ci.yml/badge.svg)](../../actions/workflows/ci.yml)
 
 > **目前最高效的十进制高精度整数库** - 在 Library Checker 上打破多项性能记录的 Header-Only C++ 库
