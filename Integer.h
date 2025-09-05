@@ -67,7 +67,9 @@ namespace detail {
         }
 
         std::uint32_t operator()(const char* value) const {
-            return table[*reinterpret_cast<const std::uint16_t*>(value)];
+            const std::uint32_t high = static_cast<std::uint8_t>(value[1]);
+            const std::uint32_t low = static_cast<std::uint8_t>(value[0]);
+            return table[(high << 8) | low];
         }
     };
 
@@ -729,7 +731,9 @@ class UnsignedInteger {
         if (!length) {
             if (resultLength < 2)
                 delete[] result, result = new char[resultLength = 2];
-            return *reinterpret_cast<std::uint16_t*>(result) = 48 << 8, result;
+            result[0] = '0';
+            result[1] = 0;
+            return result;
         }
         if (resultLength < (length << 3 | 7))
             delete[] result, result = new char[resultLength = length << 3 | 7];
