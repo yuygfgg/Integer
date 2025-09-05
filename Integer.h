@@ -573,9 +573,7 @@ class UnsignedInteger {
         other.digits = new std::uint32_t[other.length = other.capacity = 1]();
     }
 
-    UnsignedInteger(const SignedInteger& other) : UnsignedInteger(*reinterpret_cast<const UnsignedInteger*>(&other)) {
-        VALIDITY_CHECK(!(reinterpret_cast<const std::pair<UnsignedInteger, bool>*>(&other)->second), std::invalid_argument, "UnsignedInteger constructor error: the provided SignedInteger is negative. UnsignedInteger can only represent non-negative integers.")
-    }
+    UnsignedInteger(const SignedInteger& other);
 
     template <typename unsignedIntegral, typename std::enable_if<std::is_unsigned<unsignedIntegral>::value>::type* = nullptr>
     UnsignedInteger(unsignedIntegral value) : UnsignedInteger(0, (std::numeric_limits<unsignedIntegral>::digits10 + 7) >> 3) {
@@ -640,10 +638,7 @@ class UnsignedInteger {
         return *this;
     }
 
-    UnsignedInteger& operator=(const SignedInteger& other) {
-        VALIDITY_CHECK(!(reinterpret_cast<const std::pair<UnsignedInteger, bool>*>(&other)->second), std::invalid_argument, "UnsignedInteger operator= error: the provided SignedInteger is negative. UnsignedInteger can only represent non-negative integers.")
-        return *this = *reinterpret_cast<const UnsignedInteger*>(&other);
-    }
+    UnsignedInteger& operator=(const SignedInteger& other);
 
     template <typename unsignedIntegral, typename std::enable_if<std::is_unsigned<unsignedIntegral>::value>::type* = nullptr>
     UnsignedInteger& operator=(unsignedIntegral value) {
@@ -867,27 +862,59 @@ class UnsignedInteger {
         VALIDITY_CHECK(length <= TransformLimit, std::invalid_argument, "UnsignedInteger multiplication error: left operand length (" + std::to_string(length) + ") exceeds Transform limit (" + std::to_string(TransformLimit) + ").")
         VALIDITY_CHECK(other.length <= TransformLimit, std::invalid_argument, "UnsignedInteger multiplication error: right operand length (" + std::to_string(other.length) + ") exceeds Transform limit (" + std::to_string(TransformLimit) + ").")
 #if defined(__AVX2__) || defined(__ARM_NEON__)
-        thread_local double *firstArray = nullptr, *secondArray = nullptr;
-        thread_local std::uint32_t allocatedSize = 0;
         const std::uint32_t resultLength = length + other.length, transformLength = 2u << detail::log2(resultLength - 1);
-        if (allocatedSize < transformLength << 1)
-            delete[] firstArray, delete[] secondArray, firstArray = new double[transformLength << 1](), secondArray = new double[transformLength << 1](), allocatedSize = transformLength << 1;
-        std::memset(firstArray, 0, transformLength << 4), std::memset(secondArray, 0, transformLength << 4);
-        for (std::uint32_t i = 0; i != length; firstArray[i << 1] = static_cast<double>(digits[i] % 10000u), firstArray[i << 1 | 1] = std::floor(static_cast<double>(digits[i]) / 10000.0), ++i);
-        for (std::uint32_t i = 0; i != other.length; secondArray[i << 1] = static_cast<double>(other.digits[i] % 10000u), secondArray[i << 1 | 1] = std::floor(static_cast<double>(other.digits[i]) / 10000.0), ++i);
 #if defined(__AVX2__)
-        detail::T.resize(transformLength), detail::T.decimationInFrequency(reinterpret_cast<__m128d*>(firstArray), transformLength), detail::T.decimationInFrequency(reinterpret_cast<__m128d*>(secondArray), transformLength);
-        detail::T.frequencyDomainPointwiseMultiply(reinterpret_cast<__m128d*>(firstArray), reinterpret_cast<__m128d*>(secondArray), transformLength), detail::T.decimationInTime(reinterpret_cast<__m128d*>(firstArray), transformLength);
+        thread_local __m128d *firstArray = nullptr, *secondArray = nullptr;
+        thread_local std::uint32_t allocatedSize = 0;
+        if (allocatedSize < transformLength)
+            delete[] firstArray, delete[] secondArray, firstArray = new __m128d[transformLength](), secondArray = new __m128d[transformLength](), allocatedSize = transformLength;
+        std::memset(firstArray, 0, transformLength * sizeof(__m128d)), std::memset(secondArray, 0, transformLength * sizeof(__m128d));
+        for (std::uint32_t i = 0; i != length; ++i)
+            firstArray[i] = _mm_set_pd(std::floor(static_cast<double>(digits[i]) / 10000.0), static_cast<double>(digits[i] % 10000u));
+        for (std::uint32_t i = 0; i != other.length; ++i)
+            secondArray[i] = _mm_set_pd(std::floor(static_cast<double>(other.digits[i]) / 10000.0), static_cast<double>(other.digits[i] % 10000u));
+        detail::T.resize(transformLength), detail::T.decimationInFrequency(firstArray, transformLength), detail::T.decimationInFrequency(secondArray, transformLength);
+        detail::T.frequencyDomainPointwiseMultiply(firstArray, secondArray, transformLength), detail::T.decimationInTime(firstArray, transformLength);
 #else
-        detail::T.resize(transformLength), detail::T.decimationInFrequency(reinterpret_cast<float64x2_t*>(firstArray), transformLength), detail::T.decimationInFrequency(reinterpret_cast<float64x2_t*>(secondArray), transformLength);
-        detail::T.frequencyDomainPointwiseMultiply(reinterpret_cast<float64x2_t*>(firstArray), reinterpret_cast<float64x2_t*>(secondArray), transformLength), detail::T.decimationInTime(reinterpret_cast<float64x2_t*>(firstArray), transformLength);
+        thread_local float64x2_t *firstArray = nullptr, *secondArray = nullptr;
+        thread_local std::uint32_t allocatedSize = 0;
+        if (allocatedSize < transformLength)
+            delete[] firstArray, delete[] secondArray, firstArray = new float64x2_t[transformLength](), secondArray = new float64x2_t[transformLength](), allocatedSize = transformLength;
+        std::memset(firstArray, 0, transformLength * sizeof(float64x2_t)), std::memset(secondArray, 0, transformLength * sizeof(float64x2_t));
+        for (std::uint32_t i = 0; i != length; ++i) {
+            float64x2_t v = vdupq_n_f64(0.0);
+            v = vsetq_lane_f64(static_cast<double>(digits[i] % 10000u), v, 0);
+            v = vsetq_lane_f64(std::floor(static_cast<double>(digits[i]) / 10000.0), v, 1);
+            firstArray[i] = v;
+        }
+        for (std::uint32_t i = 0; i != other.length; ++i) {
+            float64x2_t v = vdupq_n_f64(0.0);
+            v = vsetq_lane_f64(static_cast<double>(other.digits[i] % 10000u), v, 0);
+            v = vsetq_lane_f64(std::floor(static_cast<double>(other.digits[i]) / 10000.0), v, 1);
+            secondArray[i] = v;
+        }
+        detail::T.resize(transformLength), detail::T.decimationInFrequency(firstArray, transformLength), detail::T.decimationInFrequency(secondArray, transformLength);
+        detail::T.frequencyDomainPointwiseMultiply(firstArray, secondArray, transformLength), detail::T.decimationInTime(firstArray, transformLength);
 #endif
         UnsignedInteger result(resultLength, resultLength);
         std::uint64_t carry = 0;
+#if defined(__AVX2__)
         for (std::uint32_t i = 0; i != resultLength; ++i) {
-            carry += std::uint64_t(std::int64_t(firstArray[i << 1] + 0.5) + std::int64_t(firstArray[i << 1 | 1] + 0.5) * 10000);
+            __m128d v = firstArray[i];
+            double realPart = _mm_cvtsd_f64(v);
+            double imagPart = _mm_cvtsd_f64(_mm_unpackhi_pd(v, v));
+            carry += std::uint64_t(std::int64_t(realPart + 0.5) + std::int64_t(imagPart + 0.5) * 10000);
             result.digits[i] = std::uint32_t(carry % Base), carry /= Base;
         }
+#else
+        for (std::uint32_t i = 0; i != resultLength; ++i) {
+            float64x2_t v = firstArray[i];
+            double realPart = vgetq_lane_f64(v, 0);
+            double imagPart = vgetq_lane_f64(v, 1);
+            carry += std::uint64_t(std::int64_t(realPart + 0.5) + std::int64_t(imagPart + 0.5) * 10000);
+            result.digits[i] = std::uint32_t(carry % Base), carry /= Base;
+        }
+#endif
 #else
         thread_local std::complex<double>*firstArray = nullptr, *secondArray = nullptr;
         thread_local std::uint32_t allocatedSize = 0;
@@ -895,8 +922,10 @@ class UnsignedInteger {
         if (allocatedSize < transformLength)
             delete[] firstArray, delete[] secondArray, firstArray = new std::complex<double>[transformLength](), secondArray = new std::complex<double>[transformLength](), allocatedSize = transformLength;
         std::memset(firstArray, 0, transformLength * sizeof(std::complex<double>)), std::memset(secondArray, 0, transformLength * sizeof(std::complex<double>));
-        for (std::uint32_t i = 0; i != length; ++i) firstArray[i] = {double(digits[i] % 10000u), double(digits[i] / 10000u)};
-        for (std::uint32_t i = 0; i != other.length; ++i) secondArray[i] = {double(other.digits[i] % 10000u), double(other.digits[i] / 10000u)};
+        for (std::uint32_t i = 0; i != length; ++i)
+            firstArray[i] = {static_cast<double>(digits[i] % 10000u), std::floor(static_cast<double>(digits[i]) / 10000.0)};
+        for (std::uint32_t i = 0; i != other.length; ++i)
+            secondArray[i] = {static_cast<double>(other.digits[i] % 10000u), std::floor(static_cast<double>(other.digits[i]) / 10000.0)};
         detail::T.resize(transformLength), detail::T.decimationInFrequency(firstArray, transformLength), detail::T.decimationInFrequency(secondArray, transformLength);
         detail::T.frequencyDomainPointwiseMultiply(firstArray, secondArray, transformLength), detail::T.decimationInTime(firstArray, transformLength);
         UnsignedInteger result(resultLength, resultLength);
@@ -948,6 +977,7 @@ class SignedInteger {
     SignedInteger(const UnsignedInteger& initialAbsolute, bool initialSign) : absolute(initialAbsolute), sign(initialSign) {}
 
   public:
+    friend class UnsignedInteger;
     SignedInteger() : absolute(), sign() {}
 
     SignedInteger(const SignedInteger& other) : absolute(other.absolute), sign(other.sign) {}
@@ -1157,6 +1187,15 @@ class SignedInteger {
 
 inline SignedInteger operator""_SI(const char* literal, std::size_t) {
     return SignedInteger(literal);
+}
+
+inline UnsignedInteger::UnsignedInteger(const SignedInteger& other) : UnsignedInteger(other.absolute) {
+    VALIDITY_CHECK(!other.sign, std::invalid_argument, "UnsignedInteger constructor error: the provided SignedInteger is negative. UnsignedInteger can only represent non-negative integers.")
+}
+
+inline UnsignedInteger& UnsignedInteger::operator=(const SignedInteger& other) {
+    VALIDITY_CHECK(!other.sign, std::invalid_argument, "UnsignedInteger operator= error: the provided SignedInteger is negative. UnsignedInteger can only represent non-negative integers.")
+    return *this = other.absolute;
 }
 
 #undef VALIDITY_CHECK
