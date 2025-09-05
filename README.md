@@ -1,9 +1,10 @@
 # Integer - 高性能C++任意精度整数库
 
 - [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-- [![C++](https://img.shields.io/badge/C%2B%2B-11%2B-blue.svg)](https://en.cppreference.com/)
+- [![C++](https://img.shields.io/badge/C%2B%2B-14%2B-blue.svg)](https://en.cppreference.com/)
 - [![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20Windows%20%7C%20macOS-lightgrey.svg)]()
-- [![Compiler](https://img.shields.io/badge/Compiler-GCC-green.svg)](https://gcc.gnu.org/)
+- [![Compiler](https://img.shields.io/badge/Compiler-GCC-green.svg)](https://gcc.gnu.org/), [![Compiler](https://img.shields.io/badge/Compiler-Clang-green.svg)](https://clang.llvm.org/)
+- [![CI](../../actions/workflows/ci.yml/badge.svg)](../../actions/workflows/ci.yml)
 
 > **目前最高效的十进制高精度整数库** - 在 Library Checker 上打破多项性能记录的 Header-Only C++ 库
 
@@ -16,6 +17,9 @@
 - [特色功能](#特色功能)
 - [快速开始](#快速开始)
 - [使用方法](#使用方法)
+- [示例程序](#示例程序)
+- [线程安全](#线程安全)
+- [测试方法](#测试方法)
 - [效率展示](#效率展示)
 - [完整功能](#完整功能)
   - [`UnsignedInteger`](#unsignedinteger)
@@ -44,7 +48,7 @@
 
 # 快速开始
 
-详细的示例可以参考[基础使用示例](./basic_usage.cpp)和[进阶使用示例](./advanced_demo.cpp)。
+详细的示例可以参考[基础使用示例](./examples/basic_usage.cpp)和[进阶使用示例](./examples/advanced_demo.cpp)。
 
 ```cpp
 #include "Integer.h"
@@ -73,9 +77,80 @@ int main() {
 
 1. 下载或复制 `Integer.h` 的内容到本地。
 2. 检查编译器配置：
-  1. 编译参数应当包括 `-march=native` 以启用 AVX2 指令集，同时确保 C++ 版本在 C++11 及以上。
+  1. 建议在编译参数中启用 `-march=native`，以自动使用所在平台可用的 SIMD 指令集（x86_64 上为 AVX2，AArch64 上为 NEON）获得最佳性能；但这不是必须条件，未启用时库会自动选择可用实现（NEON 或纯标量）。同时确保 C++ 版本在 C++14 及以上。
   2. 使用 GCC 编译器。
 3. 在需要该库的头文件 `#include "Integer.h"` 即可。
+
+# 示例程序
+
+启用并构建示例（`examples/basic_usage.cpp`、`examples/advanced_demo.cpp`）：
+
+```bash
+cmake -S . -B build -DBUILD_EXAMPLES=ON
+cmake --build build -j
+```
+
+运行示例：
+
+- macOS/Linux: `./build/examples/basic_usage`、`./build/examples/advanced_demo`
+- Windows: `build\\examples\\basic_usage.exe`、`build\\examples\\advanced_demo.exe`
+
+可选：在支持的编译器上尝试开启 SIMD 优化（自动选择 AVX2/NEON）：
+
+```bash
+cmake -S . -B build -DBUILD_EXAMPLES=ON -DENABLE_EXAMPLE_SIMD=ON
+cmake --build build -j
+```
+
+安装示例（可选）：
+
+```bash
+cmake -S . -B build -DBUILD_EXAMPLES=ON -DINSTALL_EXAMPLES=ON
+cmake --build build -j
+cmake --install build
+```
+
+# 线程安全
+
+本库以“性能优先”为设计目标，默认不为对象操作引入锁。线程安全策略如下：
+
+- 同一对象的并发写：不保证线程安全。若多个线程需要修改同一 `UnsignedInteger`/`SignedInteger` 实例，请在调用层使用互斥量（如 `std::mutex`/`std::shared_mutex`）进行同步，或改为每线程各自计算后再串行/加锁合并。
+- 同一对象的并发只读：在没有并发写入的前提下，一般是安全的（典型如多个线程仅做比较、转换或读取值）。请避免“读写交错”。
+- 不同对象的并行计算：各线程独立持有并操作各自的对象是安全且推荐的。
+- 线程局部缓冲（TLS）：库内部在若干路径使用了线程局部存储以减少分配和共享（例如字符串转换缓冲、变换工作区等）。这意味着不同线程互不干扰，但也有两个重要约束：
+  - `operator const char*()` 返回的指针指向线程本地缓冲，其内容会在“同一线程的下一次转换”中被覆盖，且可能在该线程内被重新分配（原指针失效）。请不要跨线程持有或长期保存该指针；如需长期或跨线程使用，请转为 `std::string` 后再传递。
+  - 内部的变换/工作区同样按线程隔离，仅解决“线程之间的临时缓冲竞争”，并不等同于“同一对象的并发写安全”。
+
+简言之：
+
+- 想要并行，请让每个线程各自操作自己的大整数对象，或在共享写入处自行加锁。
+- 想要跨线程传递文本，请传 `std::string`，不要传 `const char*` 指针。
+
+查看[线程安全示例](examples/thread_safety.cpp)。
+
+# 测试方法
+
+本项目使用 CTest 管理测试，测试由 `tests/run_tests.py` 驱动，自动对 SIMD 与 Fallback 两种实现分别进行确定性与随机用例验证，并在编译阶段启用 AddressSanitizer 与 UBSan。
+
+运行步骤：
+
+```bash
+# 配置使能测试
+cmake -S . -B build -DBUILD_TESTS=ON
+
+# 构建（如需要）
+cmake --build build -j
+
+# 运行测试
+cd build && ctest --output-on-failure
+```
+
+此外，已启用 GitHub Actions 持续集成：在 x86_64 与 arm64 平台（Ubuntu 与 macOS）上自动构建并运行全部测试，状态见上方 CI 徽章。
+
+说明：
+
+- 测试默认使用 CMake 的 `CMAKE_CXX_COMPILER` 编译 `tests/integer_cli.cpp`。在 Windows 平台建议使用 Clang 或 GCC 兼容工具链；如使用 MSVC 且遇到编译参数不兼容问题，可改用 Clang，或在类 Unix 环境（如 WSL）运行。
+- 直接运行脚本也可：`python3 tests/run_tests.py`（不经 CTest）。
 
 # 效率展示
 
@@ -306,11 +381,11 @@ copies or substantial portions of the Software.
 
 - 我的编程环境非常老，看你的代码一堆不认识的语法，真能过编吗？
 
-本模板对语言环境的要求较为宽松。你只需要一个支持 C++11 和 AVX2 指令集的 GCC 编译器即可通过编译。
+本模板对语言环境的要求较为宽松。你只需要一个支持 C++11 的 GCC 编译器即可通过编译。为获得最佳性能，建议添加 `-march=native` 以启用可用的 SIMD（x86_64 上为 AVX2，AArch64 上为 NEON）；但这不是必须，未启用时库会自动退回 NEON 或纯标量实现。
 
 - 编译时报错 `inlining failed in call to 'always_inline' '__m128d _mm_fmaddsub_pd(__m128d, __m128d, __m128d)': target specific option mismatch` 是怎么回事？
 
-那是因为你没有添加 AVX2 指令集支持。请在编译参数中添加 `march=native`。
+这通常是未启用对应 SIMD 指令集导致（例如在 x86_64 上未启用 AVX2）。你可以在编译参数中添加 `-march=native` 或针对性开关（如 `-mavx2`）以获得更高性能；也可以不启用，库会自动使用标量实现，但性能会有所下降。
 
 - 你的模板怎么不支持 `divmod`？
 
@@ -318,4 +393,4 @@ copies or substantial portions of the Software.
 
 - 在我启用调试的前提下，程序崩溃且没有错误信息，如何调试？
 
-注意，为了效率，本模板并不线程安全。请检查你是否使用了多线程。若没有或你确信不是多线程的问题，那你很可能发现了一个 Bug！请参考前文 Bug 反馈相关内容进行反馈。
+注意，为了效率，本模板默认不为对象操作引入锁，非线程安全（详见[线程安全](#线程安全)）。请检查是否存在多线程或对同一对象的并发写。若排除并发因素，那你很可能发现了一个 Bug！请参考前文 Bug 反馈相关内容进行反馈。

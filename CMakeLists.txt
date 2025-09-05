@@ -6,12 +6,18 @@ set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# Host-specific optimizations (optional)
+option(ENABLE_HOST_OPT "Enable host-specific optimizations (e.g. -march=native)" ON)
+
 # 设置编译选项
 if(MSVC)
-    add_compile_options(/W4 /arch:AVX2)
+    add_compile_options(/W4)
     add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
 else()
-    add_compile_options(-Wall -Wextra -mavx2 -mfma)
+    add_compile_options(-Wall -Wextra)
+    if(ENABLE_HOST_OPT)
+        add_compile_options(-march=native)
+    endif()
     if(CMAKE_BUILD_TYPE STREQUAL "Release")
         add_compile_options(-O3 -DNDEBUG)
     else()
@@ -33,17 +39,26 @@ target_include_directories(Integer
 # 设置编译器要求
 target_compile_features(Integer INTERFACE cxx_std_14)
 
-# 检查是否支持AVX2
-include(CheckCXXCompilerFlag)
-check_cxx_compiler_flag("-mavx2" COMPILER_SUPPORTS_AVX2)
-if(NOT COMPILER_SUPPORTS_AVX2 AND NOT MSVC)
-    message(WARNING "Compiler does not support AVX2. Performance may be reduced.")
-endif()
-
 # 添加示例（可选）
-option(BUILD_EXAMPLES "Build example programs" ON)
+option(BUILD_EXAMPLES "Build example programs" OFF)
 if(BUILD_EXAMPLES)
-    add_subdirectory(examples)
+    # Optionally enable SIMD for examples (AVX2/NEON). When OFF, explicitly undefine feature macros.
+    option(ENABLE_EXAMPLE_SIMD "Enable SIMD (AVX2/NEON) for examples if supported" ON)
+    include(CheckCXXCompilerFlag)
+    check_cxx_compiler_flag("-mavx2" COMPILER_SUPPORTS_AVX2)
+    if(ENABLE_EXAMPLE_SIMD)
+        if(COMPILER_SUPPORTS_AVX2)
+            set(EXAMPLE_COMPILE_FLAGS -mavx2 -mfma)
+        endif()
+    else()
+        # Force scalar fallback in examples by undefining detection macros
+        set(EXAMPLE_COMPILE_FLAGS -U__AVX2__ -U__ARM_NEON__)
+    endif()
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/examples/CMakeLists.txt")
+        add_subdirectory(examples)
+    else()
+        message(STATUS "Examples directory not found. Skipping examples build.")
+    endif()
 endif()
 
 # 添加测试（可选）
@@ -74,7 +89,7 @@ install(TARGETS Integer
 
 # 创建并安装包配置文件
 configure_package_config_file(
-    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/IntegerConfig.cmake.in"
+    "${CMAKE_CURRENT_SOURCE_DIR}/IntegerConfig.cmake.in"
     "${CMAKE_CURRENT_BINARY_DIR}/IntegerConfig.cmake"
     INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/Integer
 )
@@ -105,8 +120,4 @@ message(STATUS "  C++ Standard: ${CMAKE_CXX_STANDARD}")
 message(STATUS "  Build Type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "  Build Examples: ${BUILD_EXAMPLES}")
 message(STATUS "  Build Tests: ${BUILD_TESTS}")
-if(COMPILER_SUPPORTS_AVX2 OR MSVC)
-    message(STATUS "  AVX2 Support: YES")
-else()
-    message(STATUS "  AVX2 Support: NO")
-endif()
+message(STATUS "  Host-specific optimizations: ${ENABLE_HOST_OPT}")
